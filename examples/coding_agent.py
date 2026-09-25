@@ -647,6 +647,14 @@ async def async_main(args: argparse.Namespace) -> int:
     if not workspace_path.exists() or not workspace_path.is_dir():
         raise SystemExit(f"workspace does not exist: {workspace_path}")
 
+    task = args.task_option or args.task
+    if not task:
+        raise SystemExit("task is required: pass it positionally or with --task")
+    if args.task_option and args.task:
+        raise SystemExit("pass the task either positionally or with --task, not both")
+
+    model = args.model.replace("openrouter:", "openrouter/", 1)
+
     stats = AgentStats()
     workspace = Workspace(
         workspace_path,
@@ -655,7 +663,7 @@ async def async_main(args: argparse.Namespace) -> int:
     )
     planner = Planner(
         api_key=api_key,
-        model=args.model,
+        model=model,
         timeout_seconds=args.timeout,
         stats=stats,
     )
@@ -679,13 +687,6 @@ async def async_main(args: argparse.Namespace) -> int:
         stats=stats,
         max_steps=args.max_steps,
     )
-
-    task = args.task_option or args.task
-    if not task:
-        raise SystemExit("task is required: pass it positionally or with --task")
-
-    model = args.model.replace("openrouter:", "openrouter/", 1)
-    planner._model = model
 
     try:
         state = await agent.run(task)
