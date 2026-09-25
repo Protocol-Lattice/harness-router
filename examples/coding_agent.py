@@ -195,13 +195,11 @@ class Planner:
             f"AVAILABLE TOOLS:\n{json.dumps(registry, separators=(',', ':'))}"
         )
         value = await self._call_json(prompt)
-        tool = value.get("tool")
-        arguments = value.get("arguments", {})
-        if not isinstance(tool, str):
-            raise RuntimeError("planner did not return a string tool")
-        if not isinstance(arguments, dict):
-            raise RuntimeError("planner arguments must be an object")
-        return tool, arguments
+        action = _normalize_planner_action(value)
+        if action is None:
+            rendered = json.dumps(value, ensure_ascii=False, default=str)[:1000]
+            raise RuntimeError(f"planner did not return a tool action: {rendered}")
+        return action
 
     async def arguments_for(
         self,
@@ -264,9 +262,17 @@ class Planner:
             usage.get("completion_tokens", usage.get("output_tokens", 0)) or 0
         )
 
-        content = data["choices"][0]["message"].get("content")
+        message = data["choices"][0]["message"]
+        native_action = _parse_native_tool_calls(message.get("tool_calls"))
+        if native_action is not None:
+            return native_action
+
+        content = message.get("content")
         if not isinstance(content, str):
-            raise RuntimeError("planner returned non-text content")
+            raise RuntimeError(
+                f"planner returned neither text nor tool_calls: "
+                f"{json.dumps(message, ensure_ascii=False, default=str)[:1000]}"
+            )
         return _parse_model_object(content)
 
 
@@ -605,6 +611,71 @@ def _ignored(path: Path) -> bool:
         "node_modules",
     }
     return any(part in ignored_parts for part in path.parts)
+
+
+def _parse_arguments(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _normalize_planner_action(value: Mapping[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    for wrapper in ("tool_call", "function", "action", "call"):
+        nested = value.get(wrapper)
+        if isinstance(nested, dict):
+            normalized = _normalize_planner_action(nested)
+            if normalized is not None:
+                return normalized
+
+    tool_calls = value.get("tool_calls")
+    if isinstance(tool_calls, list):
+        for item in tool_calls:
+            if isinstance(item, dict):
+                normalized = _normalize_planner_action(item)
+                if normalized is not None:
+                    return normalized
+
+    name = value.get("tool")
+    if not isinstance(name, str):
+        name = value.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None
+
+    raw_arguments: Any = {}
+    for key in ("arguments", "args", "input", "parameters"):
+        if key in value:
+            raw_arguments = value[key]
+            break
+
+    arguments = _parse_arguments(raw_arguments)
+    if arguments is None:
+        return None
+    return name.strip(), arguments
+
+
+def _parse_native_tool_calls(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, list):
+        return None
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        normalized = _normalize_planner_action(item)
+        if normalized is None:
+            continue
+        tool, arguments = normalized
+        return {"tool": tool, "arguments": arguments}
+    return None
 
 
 def _parse_model_object(raw: str) -> dict[str, Any]:
