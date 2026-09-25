@@ -107,7 +107,10 @@ async def test_hierarchical_routing() -> None:
         ChoiceDecision("inspect", {"inspect": 0.94, "mutate": 0.05, "__fallback__": 0.01}, 0.94),
         ChoiceDecision("read_2", {"read_1": 0.1, "read_2": 0.88, "__fallback__": 0.02}, 0.91),
     )
-    router = JevToolRouter(provider, RoutingConfig(hierarchical_threshold=2))
+    router = JevToolRouter(
+        provider,
+        RoutingConfig(hierarchical_threshold=2, adaptive_hierarchy=False),
+    )
     decision = await router.route(HarnessState(goal="inspect"), tools)
     assert decision.tool == "read_2"
     assert decision.category == "inspect"
@@ -168,3 +171,59 @@ async def test_router_accepts_jev_fallback_choice() -> None:
     decision = await router.route(HarnessState(goal="compose complex patch"), [tool("read_file")])
     assert decision.fallback is True
     assert decision.fallback_reason == "no_matching_tool"
+
+
+@pytest.mark.asyncio
+async def test_identical_route_is_served_from_cache() -> None:
+    provider = FakeProvider(
+        ChoiceDecision("read_file", {"read_file": 0.97, "__fallback__": 0.03}, 0.97)
+    )
+    router = JevToolRouter(provider)
+    state = HarnessState(goal="inspect parser")
+    tools = [tool("read_file")]
+
+    first = await router.route(state, tools)
+    second = await router.route(state, tools)
+
+    assert first == second
+    assert len(provider.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_route_cache_can_be_disabled() -> None:
+    provider = FakeProvider(
+        ChoiceDecision("read_file", {"read_file": 0.97, "__fallback__": 0.03}, 0.97),
+        ChoiceDecision("read_file", {"read_file": 0.97, "__fallback__": 0.03}, 0.97),
+    )
+    router = JevToolRouter(provider, RoutingConfig(route_cache_size=0))
+    state = HarnessState(goal="inspect parser")
+    tools = [tool("read_file")]
+
+    await router.route(state, tools)
+    await router.route(state, tools)
+
+    assert len(provider.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_adaptive_hierarchy_keeps_small_expensive_split_flat() -> None:
+    provider = FakeProvider(
+        ChoiceDecision("read_1", {"read_1": 0.9, "read_2": 0.05, "write_1": 0.03, "__fallback__": 0.02}, 0.9)
+    )
+    tools = [
+        tool("read_1", "inspect"),
+        tool("read_2", "inspect"),
+        tool("write_1", "mutate"),
+    ]
+    router = JevToolRouter(
+        provider,
+        RoutingConfig(
+            hierarchical_threshold=2,
+            hierarchical_min_savings_ratio=0.15,
+        ),
+    )
+
+    decision = await router.route(HarnessState(goal="inspect"), tools)
+
+    assert decision.tool == "read_1"
+    assert len(provider.calls) == 1
