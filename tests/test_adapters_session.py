@@ -18,6 +18,15 @@ class Provider:
         return ChoiceDecision("read_file", {"read_file": 0.99, "__fallback__": 0.01}, 0.99)
 
 
+class FallbackProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def choose(self, **kwargs):
+        self.calls += 1
+        return ChoiceDecision("__fallback__", {"read_file": 0.01, "__fallback__": 0.99}, 0.99)
+
+
 def test_generic_adapter_infers_category_and_risk() -> None:
     tool = GenericToolAdapter().normalize(
         {
@@ -59,3 +68,24 @@ async def test_session_enforces_max_steps() -> None:
     second = await session.route(HarnessState(goal="inspect"), tools)
     assert first.tool == "read_file"
     assert second.fallback_reason == "max_route_steps"
+
+
+@pytest.mark.asyncio
+async def test_session_opens_circuit_after_repeated_fallbacks() -> None:
+    config = RoutingConfig(max_consecutive_fallbacks=1)
+    provider = FallbackProvider()
+    router = JevToolRouter(provider, config)
+    session = RoutingSession(router, config)
+    tools = [ToolDescriptor("read_file", "Read", risk=RiskLevel.LOW)]
+
+    first = await session.route(HarnessState(goal="inspect"), tools)
+    second = await session.route(HarnessState(goal="inspect"), tools)
+
+    assert first.fallback_reason == "no_matching_tool"
+    assert second.fallback_reason == "fallback_circuit_open"
+    assert provider.calls == 1
+
+    session.reset_fallbacks()
+    third = await session.route(HarnessState(goal="inspect changed state"), tools)
+    assert third.fallback_reason == "no_matching_tool"
+    assert provider.calls == 2

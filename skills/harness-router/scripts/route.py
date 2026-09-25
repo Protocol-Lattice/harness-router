@@ -6,7 +6,6 @@ import asyncio
 import json
 import sys
 from collections.abc import Mapping
-from dataclasses import asdict
 from typing import Any
 
 from harness_router import (
@@ -39,7 +38,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--direct-threshold", type=float, default=0.85)
     parser.add_argument("--fallback-threshold", type=float, default=0.60)
-    parser.add_argument("--hierarchical-threshold", type=int, default=8)
+    parser.add_argument("--hierarchical-threshold", type=int, default=24)
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include the full probability map and pretty-print the result.",
+    )
     return parser.parse_args()
 
 
@@ -87,9 +91,24 @@ async def run(args: argparse.Namespace) -> int:
     finally:
         await provider.aclose()
 
-    payload = asdict(decision)
-    payload["probabilities"] = dict(decision.probabilities)
-    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    payload: dict[str, object] = {
+        "tool": decision.tool,
+        "category": decision.category,
+        "confidence": round(decision.confidence, 4),
+        "fallback": decision.fallback,
+        "fallback_reason": decision.fallback_reason,
+    }
+    if args.verbose:
+        payload["probabilities"] = dict(decision.probabilities)
+        output = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+    else:
+        output = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    print(output)
     return 0
 
 

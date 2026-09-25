@@ -15,6 +15,7 @@ class RoutingSession:
         self._router = router
         self._config = config or RoutingConfig()
         self._steps = 0
+        self._consecutive_fallbacks = 0
         self._loop_guard = LoopGuard(
             max_same_action_repeats=self._config.max_same_action_repeats
         )
@@ -26,8 +27,20 @@ class RoutingSession:
     ) -> RouteDecision:
         if self._steps >= self._config.max_route_steps:
             return RouteDecision.fallback_to_planner("max_route_steps")
+        if self._consecutive_fallbacks >= self._config.max_consecutive_fallbacks:
+            return RouteDecision.fallback_to_planner("fallback_circuit_open")
+
         self._steps += 1
-        return await self._router.route(state, tools)
+        decision = await self._router.route(state, tools)
+        if decision.fallback:
+            self._consecutive_fallbacks += 1
+        else:
+            self._consecutive_fallbacks = 0
+        return decision
+
+    def reset_fallbacks(self) -> None:
+        """Re-enable Jev after the planner materially changes the routing state."""
+        self._consecutive_fallbacks = 0
 
     def record_execution(
         self,
@@ -46,3 +59,7 @@ class RoutingSession:
     @property
     def steps(self) -> int:
         return self._steps
+
+    @property
+    def consecutive_fallbacks(self) -> int:
+        return self._consecutive_fallbacks

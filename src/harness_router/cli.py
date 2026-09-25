@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from dataclasses import asdict
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Mapping, Sequence
 
@@ -53,7 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     route.add_argument("--direct-threshold", type=float, default=0.85)
     route.add_argument("--fallback-threshold", type=float, default=0.60)
-    route.add_argument("--hierarchical-threshold", type=int, default=8)
+    route.add_argument("--hierarchical-threshold", type=int, default=24)
+    route.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include the full probability map and pretty-print the result.",
+    )
 
     return parser
 
@@ -102,9 +106,24 @@ async def _run_route(args: argparse.Namespace) -> int:
     finally:
         await provider.aclose()
 
-    payload = asdict(decision)
-    payload["probabilities"] = dict(decision.probabilities)
-    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    payload: dict[str, object] = {
+        "tool": decision.tool,
+        "category": decision.category,
+        "confidence": round(decision.confidence, 4),
+        "fallback": decision.fallback,
+        "fallback_reason": decision.fallback_reason,
+    }
+    if args.verbose:
+        payload["probabilities"] = dict(decision.probabilities)
+        output = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+    else:
+        output = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    print(output)
     return 0
 
 

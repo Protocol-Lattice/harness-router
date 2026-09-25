@@ -4,6 +4,8 @@
 
 `harness-router` is a semantic tool-selection layer. It is not a replacement for the harness executor or the main reasoning model.
 
+In integrations where invoking the router itself consumes a planner turn, route only at real ambiguity points. Skip the router when the next tool is already obvious, and stop routing after repeated fallbacks.
+
 Recommended control flow:
 
 ```text

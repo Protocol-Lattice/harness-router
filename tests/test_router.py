@@ -1,8 +1,10 @@
+import json
 from collections import deque
 
 import pytest
 
 from harness_router import (
+    ActionSummary,
     ChoiceDecision,
     HarnessState,
     JevToolRouter,
@@ -111,6 +113,50 @@ async def test_hierarchical_routing() -> None:
     assert decision.category == "inspect"
     assert decision.confidence == 0.91
     assert len(provider.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_router_compacts_provider_payload() -> None:
+    provider = FakeProvider(
+        ChoiceDecision("read_file", {"read_file": 0.96, "__fallback__": 0.04}, 0.96)
+    )
+    router = JevToolRouter(
+        provider,
+        RoutingConfig(
+            description_limit=32,
+            history_limit=1,
+            state_field_limit=64,
+            constraint_limit=1,
+        ),
+    )
+    state = HarnessState(
+        goal="g" * 100,
+        observation="o" * 100,
+        recent_actions=[
+            ActionSummary("search_code", "x" * 100),
+            ActionSummary("read_file", "y" * 100),
+        ],
+        constraints=["c" * 100, "ignored"],
+    )
+    verbose_tool = ToolDescriptor(
+        name="read_file",
+        description="very long capability " * 20,
+        category="inspect",
+        risk=RiskLevel.LOW,
+    )
+
+    await router.route(state, [verbose_tool])
+
+    call = provider.calls[0]
+    payload = json.loads(call["state"])
+    assert len(payload["goal"]) == 64
+    assert len(payload["observation"]) == 64
+    assert len(payload["recent_actions"]) == 1
+    assert len(payload["recent_actions"][0]["outcome"]) == 64
+    assert len(payload["constraints"]) == 1
+    assert len(payload["constraints"][0]) == 64
+    assert "very long capability" in call["criteria"]["read_file"]
+    assert len(call["criteria"]["read_file"]) < 80
 
 
 @pytest.mark.asyncio
