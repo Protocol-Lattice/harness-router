@@ -1,7 +1,5 @@
 # harness-router
 
-[![Python](https://img.shields.io/pypi/pyversions/harness-router.svg)](https://pypi.org/project/harness-router/)
-
 **Framework-agnostic Jev tool routing for agentic harnesses.**
 
 <code>harness-router</code> uses [TypeSafeAI Jev](https://www.typesafe.ai/) through the [OpenRouter Decisions API](https://openrouter.ai/) as a fast **System-1 tool-selection layer**.
