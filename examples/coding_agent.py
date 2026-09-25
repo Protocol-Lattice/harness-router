@@ -162,7 +162,7 @@ class Planner:
         timeout_seconds: float,
         stats: AgentStats,
     ) -> None:
-        self._model = model
+        self._model = _normalize_model(model)
         self._stats = stats
         self._client = httpx.AsyncClient(
             timeout=timeout_seconds,
@@ -244,7 +244,15 @@ class Planner:
                 ],
             },
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            body = response.text[:2000]
+            raise RuntimeError(
+                f"OpenRouter planner request failed with HTTP "
+                f"{response.status_code} for model {self._model!r}: {body}"
+            ) from exc
+
         data = response.json()
         usage = data.get("usage") or {}
         self._stats.planner_input_tokens += int(
@@ -519,6 +527,13 @@ class CodingAgent:
         return "tests failed" in state.observation.lower()
 
 
+def _normalize_model(model: str) -> str:
+    model = model.strip()
+    if model.startswith("openrouter:"):
+        return "openrouter/" + model.removeprefix("openrouter:")
+    return model
+
+
 def _router_state(state: AgentState) -> HarnessState:
     return HarnessState(
         goal=state.goal,
@@ -653,7 +668,7 @@ async def async_main(args: argparse.Namespace) -> int:
     if args.task_option and args.task:
         raise SystemExit("pass the task either positionally or with --task, not both")
 
-    model = args.model.replace("openrouter:", "openrouter/", 1)
+    model = _normalize_model(args.model)
 
     stats = AgentStats()
     workspace = Workspace(
