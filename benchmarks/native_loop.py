@@ -7,9 +7,10 @@ import os
 import random
 import statistics
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 import httpx
 
@@ -56,7 +57,12 @@ SCENARIOS: tuple[Scenario, ...] = (
         },
         failure="test_percentage_discount: expected 75.0, got -2400.0",
         expected_path="src/pricing.py",
-        accepted_fragments=("percent / 100", "percent/100", "percent * 0.01", "percent*0.01"),
+        accepted_fragments=(
+            "percent / 100",
+            "percent/100",
+            "percent * 0.01",
+            "percent*0.01",
+        ),
     ),
     Scenario(
         name="slug_separator",
