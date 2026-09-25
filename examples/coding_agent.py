@@ -310,7 +310,7 @@ class MCTSActionSelector:
                 node = child
                 depth += 1
 
-            reward = self._rollout(node.state, depth)
+            reward = self._path_reward(node) + self._rollout(node.state, depth)
             self._backpropagate(node, reward)
 
         if not root.children:
@@ -343,6 +343,16 @@ class MCTSActionSelector:
             return exploit + explore
 
         return max(node.children.values(), key=uct)
+
+    @staticmethod
+    def _path_reward(node: MCTSNode) -> float:
+        reward = 0.0
+        current: MCTSNode | None = node
+        while current is not None and current.parent is not None:
+            if current.action is not None:
+                reward += _mcts_action_reward(current.parent.state, current.action)
+            current = current.parent
+        return reward
 
     def _rollout(self, state: MCTSState, depth: int) -> float:
         total = 0.0
@@ -1053,15 +1063,19 @@ def _mcts_transition(state: MCTSState, action: str) -> MCTSState:
 
 
 def _mcts_action_reward(state: MCTSState, action: str) -> float:
-    reward = 0.0
+    # Small per-step cost makes shorter successful plans preferable.
+    reward = -0.25
 
     if action in {"list_files", "read_file", "search_code"}:
-        reward += 2.0 if not state.inspected else 0.4
+        reward += 2.0 if not state.inspected else -0.5
         if state.tests_failed:
             reward += 1.0
 
     if action in {"replace_text", "write_file"}:
-        reward += 3.0 if state.inspected else -5.0
+        if state.mutated and not state.tests_failed:
+            reward -= 1.0
+        else:
+            reward += 3.0 if state.inspected else -5.0
         if state.tests_failed:
             reward += 1.5
 
