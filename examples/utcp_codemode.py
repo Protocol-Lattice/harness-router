@@ -65,6 +65,13 @@ from harness_router import (  # noqa: E402
 from utcp_code_mode import CodeModeUtcpClient  # noqa: E402
 
 
+class ClosableCodeModeUtcpClient(CodeModeUtcpClient):
+    """Compatibility shim that closes the wrapped UTCP client."""
+
+    async def close(self) -> None:
+        await self._base_client.close()
+
+
 PROVIDER = Path(__file__).with_name("utcp_local_tools_provider.py").resolve()
 
 
@@ -230,7 +237,7 @@ async def main() -> None:
         f"{shlex.quote(sys.executable)} {shlex.quote(str(PROVIDER))}"
     )
 
-    client = await CodeModeUtcpClient.create(
+    client = await ClosableCodeModeUtcpClient.create(
         root_dir=str(workspace),
         config={
             "manual_call_templates": [
