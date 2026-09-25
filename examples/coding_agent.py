@@ -32,6 +32,7 @@ from harness_router import (
 
 PLANNER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_ROUTER_CALLS = 2
+MAX_SUBAGENTS = 8
 
 
 TOOLS: tuple[ToolDescriptor, ...] = (
@@ -127,6 +128,71 @@ TOOLS: tuple[ToolDescriptor, ...] = (
 )
 
 
+REPORT_FINDINGS_TOOL = ToolDescriptor(
+    name="report_findings",
+    description="Return concise read-only findings to the parent coding agent.",
+    category="inspect",
+    risk=RiskLevel.LOW,
+    schema={
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "Concrete findings with relevant file paths and symbols.",
+            },
+        },
+        "required": ["summary"],
+        "additionalProperties": False,
+    },
+)
+
+SUBAGENT_TOOLS: tuple[ToolDescriptor, ...] = tuple(
+    tool for tool in TOOLS if tool.category == "inspect"
+) + (REPORT_FINDINGS_TOOL,)
+
+DELEGATE_SUBTASKS_TOOL = ToolDescriptor(
+    name="delegate_subtasks",
+    description="Split a coding task into independent read-only investigations.",
+    category="plan",
+    risk=RiskLevel.LOW,
+    schema={
+        "type": "object",
+        "properties": {
+            "tasks": {
+                "type": "array",
+                "maxItems": MAX_SUBAGENTS,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "goal": {"type": "string"},
+                    },
+                    "required": ["id", "goal"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["tasks"],
+        "additionalProperties": False,
+    },
+)
+
+
+@dataclass(slots=True, frozen=True)
+class SubagentTask:
+    id: str
+    goal: str
+
+
+@dataclass(slots=True, frozen=True)
+class SubagentResult:
+    id: str
+    goal: str
+    summary: str
+    steps: int
+    success: bool
+
+
 @dataclass(slots=True)
 class AgentStats:
     planner_calls: int = 0
@@ -136,6 +202,9 @@ class AgentStats:
     router_fallbacks: int = 0
     router_ms: float = 0.0
     tool_calls: int = 0
+    subagent_plans: int = 0
+    subagents_spawned: int = 0
+    subagent_tool_calls: int = 0
 
     @property
     def planner_tokens(self) -> int:
@@ -217,6 +286,72 @@ class Planner:
                 f"planner called {selected!r} after router selected {tool.name!r}"
             )
         return arguments
+
+    async def plan_subtasks(
+        self,
+        *,
+        goal: str,
+        max_subagents: int,
+    ) -> list[SubagentTask]:
+        if max_subagents <= 0:
+            return []
+
+        limit = min(max_subagents, MAX_SUBAGENTS)
+        self._stats.subagent_plans += 1
+        prompt = (
+            "Decide whether parallel read-only subagents would materially help this coding task. "
+            "Subagents may only inspect the repository; they cannot edit files or run tests. "
+            "Return an empty tasks list for a narrow task where delegation would add overhead. "
+            f"Otherwise return at most {limit} independent investigations, preferably 2-4. "
+            "Keep scopes distinct and make each goal self-contained.\n\n"
+            f"CODING TASK:\n{goal}"
+        )
+        selected, arguments = await self._call_tool(
+            prompt,
+            tools=[DELEGATE_SUBTASKS_TOOL],
+            forced_tool=DELEGATE_SUBTASKS_TOOL.name,
+        )
+        if selected != DELEGATE_SUBTASKS_TOOL.name:
+            return []
+
+        raw_tasks = arguments.get("tasks")
+        if not isinstance(raw_tasks, list):
+            return []
+
+        tasks: list[SubagentTask] = []
+        seen_ids: set[str] = set()
+        for index, item in enumerate(raw_tasks[:limit], start=1):
+            if not isinstance(item, dict):
+                continue
+            raw_goal = item.get("goal")
+            if not isinstance(raw_goal, str) or not raw_goal.strip():
+                continue
+            raw_id = item.get("id")
+            task_id = raw_id.strip() if isinstance(raw_id, str) else ""
+            if not task_id:
+                task_id = f"subagent-{index}"
+            if task_id in seen_ids:
+                task_id = f"{task_id}-{index}"
+            seen_ids.add(task_id)
+            tasks.append(SubagentTask(id=task_id, goal=raw_goal.strip()))
+        return tasks
+
+    async def choose_subagent_tool(
+        self,
+        *,
+        state: AgentState,
+    ) -> tuple[str, dict[str, Any]]:
+        prompt = (
+            "You are a read-only coding subagent working for a parent coding agent. "
+            "Investigate only your scoped goal. Never propose or perform edits. "
+            "Use list_files, read_file, and search_code to gather concrete evidence. "
+            "As soon as you have enough evidence, call report_findings with a concise summary "
+            "including relevant file paths, symbols, constraints, and risks.\n\n"
+            f"SCOPED GOAL:\n{state.goal}\n\n"
+            f"LATEST OBSERVATION:\n{state.observation[:12000]}\n\n"
+            f"RECENT ACTIONS:\n{_transcript(state.transcript)}"
+        )
+        return await self._call_tool(prompt, tools=SUBAGENT_TOOLS)
 
     async def _call_tool(
         self,
@@ -431,6 +566,81 @@ class Workspace:
         return candidate
 
 
+class InspectionSubagent:
+    """Read-only worker used to gather repository context in parallel."""
+
+    def __init__(
+        self,
+        *,
+        planner: Planner,
+        workspace: Workspace,
+        stats: AgentStats,
+        max_steps: int,
+    ) -> None:
+        self.planner = planner
+        self.workspace = workspace
+        self.stats = stats
+        self.max_steps = max_steps
+
+    async def run(self, task: SubagentTask) -> SubagentResult:
+        state = AgentState(
+            goal=task.goal,
+            observation="Start the scoped read-only investigation.",
+            router_enabled=False,
+        )
+
+        try:
+            for step in range(1, self.max_steps + 1):
+                tool_name, arguments = await self.planner.choose_subagent_tool(state=state)
+                self.stats.tool_calls += 1
+                self.stats.subagent_tool_calls += 1
+
+                if tool_name == REPORT_FINDINGS_TOOL.name:
+                    summary = _required_string(arguments, "summary").strip()
+                    return SubagentResult(
+                        id=task.id,
+                        goal=task.goal,
+                        summary=summary[:4000],
+                        steps=step,
+                        success=True,
+                    )
+
+                descriptor = _tool_by_name_in(tool_name, SUBAGENT_TOOLS)
+                if descriptor is None or descriptor.name == REPORT_FINDINGS_TOOL.name:
+                    result = f"error: read-only subagent cannot use tool {tool_name!r}"
+                else:
+                    try:
+                        result = self.workspace.execute(tool_name, arguments, state)
+                    except (OSError, ValueError) as exc:
+                        result = f"error: {exc}"
+
+                state.observation = result
+                state.history.append(ActionSummary(tool=tool_name, outcome=result[:500]))
+                state.transcript.append(
+                    f"{tool_name}({json.dumps(arguments, ensure_ascii=False)[:800]}) -> "
+                    f"{result[:1800]}"
+                )
+        except Exception as exc:
+            return SubagentResult(
+                id=task.id,
+                goal=task.goal,
+                summary=f"subagent failed: {exc}",
+                steps=len(state.history),
+                success=False,
+            )
+
+        fallback = state.observation.strip()
+        if not fallback:
+            fallback = "subagent reached its step limit without useful findings"
+        return SubagentResult(
+            id=task.id,
+            goal=task.goal,
+            summary=fallback[:4000],
+            steps=self.max_steps,
+            success=False,
+        )
+
+
 class CodingAgent:
     """Skill-driven coding agent using Jev only for ambiguous discrete routing.
 
@@ -450,15 +660,29 @@ class CodingAgent:
         workspace: Workspace,
         stats: AgentStats,
         max_steps: int,
+        max_subagents: int,
+        subagent_steps: int,
     ) -> None:
         self.planner = planner
         self.router = router
         self.workspace = workspace
         self.stats = stats
         self.max_steps = max_steps
+        self.max_subagents = max_subagents
+        self.subagent_steps = subagent_steps
 
     async def run(self, goal: str) -> AgentState:
         state = AgentState(goal=goal)
+
+        subagent_results = await self._run_subagents(goal)
+        if subagent_results:
+            context = _render_subagent_results(subagent_results)
+            state.observation = (
+                "Parallel read-only subagents inspected the repository. "
+                "Use their findings as evidence, verify anything uncertain, and remain the only writer.\n\n"
+                f"{context}"
+            )
+            state.transcript.append(f"parallel_subagents -> {context[:6000]}")
 
         for step in range(1, self.max_steps + 1):
             if state.finished:
@@ -490,6 +714,43 @@ class CodingAgent:
             print(_one_line(result))
 
         return state
+
+    async def _run_subagents(self, goal: str) -> list[SubagentResult]:
+        if self.max_subagents <= 0:
+            return []
+
+        try:
+            tasks = await self.planner.plan_subtasks(
+                goal=goal,
+                max_subagents=self.max_subagents,
+            )
+        except Exception as exc:
+            print(f"[subagents] planning skipped: {exc}")
+            return []
+
+        if not tasks:
+            print("[subagents] no useful parallel investigations")
+            return []
+
+        self.stats.subagents_spawned += len(tasks)
+        print(f"[subagents] running {len(tasks)} read-only investigations in parallel")
+
+        worker = InspectionSubagent(
+            planner=self.planner,
+            workspace=self.workspace,
+            stats=self.stats,
+            max_steps=self.subagent_steps,
+        )
+        pending: list[tuple[SubagentTask, asyncio.Task[SubagentResult]]] = []
+        async with asyncio.TaskGroup() as group:
+            for task in tasks:
+                pending.append((task, group.create_task(worker.run(task))))
+
+        results = [future.result() for _, future in pending]
+        for result in results:
+            status = "ok" if result.success else "partial"
+            print(f"[subagent {result.id}] {status}: {_one_line(result.summary)}")
+        return results
 
     async def _next_action(self, state: AgentState) -> tuple[str, dict[str, Any]]:
         if self._should_route(state):
@@ -591,7 +852,14 @@ def _native_tool_payload(tool: ToolDescriptor) -> dict[str, Any]:
 
 
 def _tool_by_name(name: str) -> ToolDescriptor | None:
-    return next((tool for tool in TOOLS if tool.name == name), None)
+    return _tool_by_name_in(name, TOOLS)
+
+
+def _tool_by_name_in(
+    name: str,
+    tools: Sequence[ToolDescriptor],
+) -> ToolDescriptor | None:
+    return next((tool for tool in tools if tool.name == name), None)
 
 
 def _transcript(items: Sequence[str]) -> str:
@@ -601,6 +869,18 @@ def _transcript(items: Sequence[str]) -> str:
 def _one_line(value: str) -> str:
     line = " ".join(value.split())
     return line[:300] + ("..." if len(line) > 300 else "")
+
+
+def _render_subagent_results(results: Sequence[SubagentResult]) -> str:
+    rendered: list[str] = []
+    for result in results:
+        status = "verified findings" if result.success else "partial findings"
+        rendered.append(
+            f"[{result.id} | {status} | {result.steps} steps]\n"
+            f"Goal: {result.goal}\n"
+            f"{result.summary}"
+        )
+    return "\n\n".join(rendered)
 
 
 def _required_string(
@@ -829,6 +1109,8 @@ async def async_main(args: argparse.Namespace) -> int:
         workspace=workspace,
         stats=stats,
         max_steps=args.max_steps,
+        max_subagents=args.subagents,
+        subagent_steps=args.subagent_steps,
     )
 
     try:
@@ -853,6 +1135,9 @@ async def async_main(args: argparse.Namespace) -> int:
     print(f"router fallbacks: {stats.router_fallbacks}")
     print(f"router time: {stats.router_ms:.1f} ms")
     print(f"tool calls: {stats.tool_calls}")
+    print(f"subagent plans: {stats.subagent_plans}")
+    print(f"subagents spawned: {stats.subagents_spawned}")
+    print(f"subagent tool calls: {stats.subagent_tool_calls}")
 
     return 0 if state.finished and state.tests_passed else 1
 
@@ -879,6 +1164,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="modify the real workspace; default runs in a temporary copy",
     )
     parser.add_argument("--max-steps", type=int, default=16)
+    parser.add_argument(
+        "--subagents",
+        type=int,
+        default=0,
+        help=f"maximum parallel read-only subagents, 0 disables (max {MAX_SUBAGENTS})",
+    )
+    parser.add_argument(
+        "--subagent-steps",
+        type=int,
+        default=5,
+        help="maximum inspect/report steps per subagent",
+    )
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--test-timeout", type=float, default=120.0)
     return parser
@@ -888,6 +1185,10 @@ def main() -> int:
     args = build_parser().parse_args()
     if args.max_steps < 1:
         raise SystemExit("--max-steps must be >= 1")
+    if not 0 <= args.subagents <= MAX_SUBAGENTS:
+        raise SystemExit(f"--subagents must be between 0 and {MAX_SUBAGENTS}")
+    if args.subagent_steps < 1:
+        raise SystemExit("--subagent-steps must be >= 1")
     return asyncio.run(async_main(args))
 
 
