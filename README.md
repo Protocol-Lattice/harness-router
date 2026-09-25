@@ -530,6 +530,72 @@ python examples/utcp_codemode.py \
 
 The example deliberately routes between **workflow-level actions** rather than making Jev select every atomic tool call. Once Jev selects a workflow, CodeMode can chain the UTCP tools inside one Python execution.
 
+
+### Autonomous bug-fix agent with OpenRouter Free
+
+The repository includes an autonomous coding workflow at:
+
+~~~text
+examples/openrouter_free_bugfix_agent.py
+~~~
+
+It combines:
+
+~~~text
+Jev
+  -> choose phase: inspect / reproduce / fix / verify / finish
+OpenRouter Free
+  -> reason about the repository and generate a small CodeMode program
+UTCP CodeMode
+  -> execute filesystem and Bash tools
+observation
+  -> feed results into the next routing step
+~~~
+
+The default planner model is:
+
+~~~text
+openrouter/free
+~~~
+
+Run the complete workflow:
+
+~~~bash
+export OPENROUTER_API_KEY="your-key"
+
+python examples/openrouter_free_bugfix_agent.py \
+  --goal "Find a real bug in this repository, fix it, and verify the fix" \
+  --execute \
+  --allow-mutation \
+  --allow-bash \
+  --show-code
+~~~
+
+The two capability flags are deliberately separate:
+
+- --allow-mutation permits fs_write and fs_patch during the fix phase.
+- --allow-bash permits test, lint, build, and verification commands.
+
+Without --execute, the agent performs a dry run and prints the first generated CodeMode step.
+
+To override the planner model:
+
+~~~bash
+export OPENROUTER_AGENT_MODEL="openrouter/free"
+~~~
+
+or:
+
+~~~bash
+python examples/openrouter_free_bugfix_agent.py \
+  --model "openrouter/free" \
+  --execute \
+  --allow-mutation \
+  --allow-bash
+~~~
+
+The workflow constrains phase transitions so it cannot intentionally select finish before a fix phase followed by a verification phase.
+
 ## Safety and execution policy
 
 Routing and execution are deliberately separate.
