@@ -74,13 +74,13 @@ class OpenRouterJevProvider:
             raise ValueError("Jev choice requires at least two criteria")
 
         state_payload: object = state
-        if state.lstrip().startswith(("{", "[")):
+        if state.lstrip().startswith("{"):
             try:
                 parsed_state = json.loads(state)
             except ValueError:
                 pass
             else:
-                if isinstance(parsed_state, (dict, list)):
+                if isinstance(parsed_state, dict):
                     state_payload = parsed_state
 
         payload = {
