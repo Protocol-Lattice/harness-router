@@ -341,6 +341,91 @@ tools = normalize_tools(utcp_tools, adapter=UTCPToolAdapter())
 
 The adapters normalize tool names, descriptions, schemas, categories, and risk metadata without requiring an MCP or UTCP SDK dependency.
 
+
+## UTCP filesystem + Bash example
+
+The repository includes an end-to-end UTCP example that discovers local tools, normalizes them for `harness-router`, asks OpenRouter Jev to select the next tool, and can optionally execute the selected tool through UTCP.
+
+Available tools:
+
+- `local.fs_read` — read a UTF-8 file inside the workspace
+- `local.fs_list` — list a directory inside the workspace
+- `local.fs_write` — write a UTF-8 file inside the workspace
+- `local.fs_patch` — replace one unique exact text block in a file
+- `local.bash_run` — execute an arbitrary Bash command in the workspace
+
+Install the example dependencies:
+
+~~~bash
+pip install -e ".[utcp]"
+export OPENROUTER_API_KEY="your-key"
+~~~
+
+List files:
+
+~~~bash
+python examples/utcp_filesystem_bash.py \
+  --goal "List files in this repository" \
+  --execute \
+  --args-json '{"path":"."}'
+~~~
+
+Read a file:
+
+~~~bash
+python examples/utcp_filesystem_bash.py \
+  --goal "Read the README" \
+  --execute \
+  --args-json '{"path":"README.md"}'
+~~~
+
+Write a file:
+
+~~~bash
+python examples/utcp_filesystem_bash.py \
+  --goal "Write hello.txt" \
+  --execute \
+  --allow-mutation \
+  --args-json '{"path":"hello.txt","content":"hello\\n"}'
+~~~
+
+Patch a file:
+
+~~~bash
+python examples/utcp_filesystem_bash.py \
+  --goal "Patch hello.txt" \
+  --execute \
+  --allow-mutation \
+  --args-json '{"path":"hello.txt","old_text":"hello","new_text":"hello world"}'
+~~~
+
+Run Bash:
+
+~~~bash
+python examples/utcp_filesystem_bash.py \
+  --goal "Show git status using Bash" \
+  --execute \
+  --allow-bash \
+  --args-json '{"command":"git status --short"}'
+~~~
+
+The filesystem provider is workspace-scoped and rejects paths that resolve outside the current working directory. Mutating filesystem tools require `--allow-mutation`, while arbitrary Bash execution requires `--allow-bash`.
+
+The example keeps routing, authorization, and execution separate:
+
+~~~text
+UTCP discovery
+    ↓
+harness-router normalization
+    ↓
+OpenRouter Jev tool selection
+    ↓
+explicit execution gate
+    ↓
+UTCP call_tool(...)
+~~~
+
+
 ## Safety and execution policy
 
 Routing and execution are deliberately separate.
