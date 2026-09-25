@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import sys
+from collections.abc import Mapping
+from dataclasses import asdict
+from typing import Any
+
+from harness_router import (
+    GenericToolAdapter,
+    HarnessState,
+    JevToolRouter,
+    OpenRouterConfig,
+    OpenRouterJevProvider,
+    RoutingConfig,
+    RoutingMode,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Route a harness action through OpenRouter Jev."
+    )
+    parser.add_argument("--goal", required=True, help="Current user/harness goal.")
+    parser.add_argument("--observation", default=None, help="Latest compact observation.")
+    parser.add_argument("--last-action", default=None, help="Previous action/tool name.")
+    parser.add_argument(
+        "--tools-json",
+        required=True,
+        help="JSON array of tool objects with at least name and description.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=[mode.value for mode in RoutingMode],
+        default=RoutingMode.HYBRID.value,
+    )
+    parser.add_argument("--direct-threshold", type=float, default=0.85)
+    parser.add_argument("--fallback-threshold", type=float, default=0.60)
+    parser.add_argument("--hierarchical-threshold", type=int, default=8)
+    return parser.parse_args()
+
+
+def load_tools(raw: str) -> list[Mapping[str, Any]]:
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"invalid --tools-json: {exc}") from exc
+
+    if not isinstance(value, list) or not value:
+        raise SystemExit("--tools-json must be a non-empty JSON array")
+
+    result: list[Mapping[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise SystemExit(f"tool at index {index} must be a JSON object")
+        result.append(item)
+    return result
+
+
+async def run(args: argparse.Namespace) -> int:
+    adapter = GenericToolAdapter()
+    tools = [adapter.normalize(tool) for tool in load_tools(args.tools_json)]
+
+    provider = OpenRouterJevProvider.from_config(OpenRouterConfig())
+    router = JevToolRouter(
+        provider,
+        RoutingConfig(
+            mode=RoutingMode(args.mode),
+            direct_execution_threshold=args.direct_threshold,
+            fallback_threshold=args.fallback_threshold,
+            hierarchical_threshold=args.hierarchical_threshold,
+        ),
+    )
+
+    try:
+        decision = await router.route(
+            HarnessState(
+                goal=args.goal,
+                observation=args.observation,
+                last_action=args.last_action,
+            ),
+            tools,
+        )
+    finally:
+        await provider.aclose()
+
+    payload = asdict(decision)
+    payload["probabilities"] = dict(decision.probabilities)
+    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    return 0
+
+
+def main() -> None:
+    try:
+        raise SystemExit(asyncio.run(run(parse_args())))
+    except KeyboardInterrupt:
+        raise SystemExit(130) from None
+
+
+if __name__ == "__main__":
+    main()
