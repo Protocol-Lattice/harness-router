@@ -27,6 +27,10 @@ harness-router = "harness_router.cli:main"
 har = "harness_router.cli:main"
 
 [project.optional-dependencies]
+utcp = [
+  "utcp>=1.1",
+  "utcp-cli>=1.1",
+]
 dev = [
   "mypy>=1.11",
   "pytest>=8",
