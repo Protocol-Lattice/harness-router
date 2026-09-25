@@ -222,6 +222,7 @@ class AgentState:
     observation: str = "Start the task."
     history: list[ActionSummary] = field(default_factory=list)
     transcript: list[str] = field(default_factory=list)
+    inspection_fingerprints: set[str] = field(default_factory=set)
     tests_passed: bool = False
     router_enabled: bool = True
     router_calls: int = 0
@@ -453,7 +454,9 @@ class Planner:
         prompt = (
             "Choose exactly one next coding-agent tool. "
             "Inspect evidence before editing, prefer a minimal edit, run tests after mutation, "
-            "and do not finish before tests pass. Use one of the provided tools.\n\n"
+            "and do not finish before tests pass. Never repeat the same read/list/search call "
+            "unless a mutation changed the workspace since that inspection. "
+            "Use one of the provided tools.\n\n"
             f"GOAL:\n{state.goal}\n\n"
             f"LATEST OBSERVATION:\n{state.observation}\n\n"
             f"RECENT ACTIONS:\n{_transcript(state.transcript)}"
@@ -895,6 +898,35 @@ class CodingAgent:
                 state.transcript.append(state.observation)
                 continue
 
+            if descriptor.category == "inspect":
+                fingerprint = _call_fingerprint(tool_name, arguments)
+                if fingerprint in state.inspection_fingerprints:
+                    print(f"[progress] blocked duplicate inspection: {tool_name}")
+                    state.observation = (
+                        f"Duplicate inspection blocked: {tool_name} with identical arguments "
+                        "already ran without an intervening workspace mutation. Choose a "
+                        "different inspection or make progress with an edit/test."
+                    )
+                    state.transcript.append(state.observation)
+                    alternatives = tuple(tool for tool in TOOLS if tool.name != tool_name)
+                    tool_name, arguments = await self.planner.choose_tool(
+                        state=state,
+                        tools=alternatives,
+                    )
+                    descriptor = _tool_by_name(tool_name)
+                    if descriptor is None:
+                        state.observation = f"error: unknown tool selected: {tool_name}"
+                        state.transcript.append(state.observation)
+                        continue
+                    if descriptor.category == "inspect":
+                        fingerprint = _call_fingerprint(tool_name, arguments)
+                        if fingerprint in state.inspection_fingerprints:
+                            state.observation = (
+                                f"error: duplicate inspection blocked again: {tool_name}"
+                            )
+                            state.transcript.append(state.observation)
+                            continue
+
             self.stats.tool_calls += 1
             try:
                 result = self.workspace.execute(tool_name, arguments, state)
@@ -904,6 +936,11 @@ class CodingAgent:
                 result = f"error: {exc}"
 
             state.observation = result
+            if descriptor.category == "inspect":
+                state.inspection_fingerprints.add(_call_fingerprint(tool_name, arguments))
+            elif descriptor.category == "mutate" and not result.startswith("error:"):
+                state.inspection_fingerprints.clear()
+
             state.history.append(ActionSummary(tool=tool_name, outcome=result[:500]))
             state.transcript.append(
                 f"{tool_name}({json.dumps(arguments, ensure_ascii=False)[:1200]}) -> "
@@ -1132,6 +1169,16 @@ def _native_tool_payload(tool: ToolDescriptor) -> dict[str, Any]:
             "parameters": dict(tool.schema),
         },
     }
+
+
+def _call_fingerprint(tool: str, arguments: Mapping[str, Any]) -> str:
+    return json.dumps(
+        {"tool": tool, "arguments": arguments},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
 
 
 def _tool_by_name(name: str) -> ToolDescriptor | None:
