@@ -680,8 +680,15 @@ async def async_main(args: argparse.Namespace) -> int:
         max_steps=args.max_steps,
     )
 
+    task = args.task_option or args.task
+    if not task:
+        raise SystemExit("task is required: pass it positionally or with --task")
+
+    model = args.model.replace("openrouter:", "openrouter/", 1)
+    planner._model = model
+
     try:
-        state = await agent.run(args.task)
+        state = await agent.run(task)
     finally:
         await planner.aclose()
         await provider.aclose()
@@ -710,7 +717,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Small coding agent using harness-router as a selective Jev tool router."
     )
-    parser.add_argument("task", help="coding task for the agent")
+    parser.add_argument("task", nargs="?", help="coding task for the agent")
+    parser.add_argument(
+        "--task",
+        dest="task_option",
+        help="coding task for the agent (alternative to positional task)",
+    )
     parser.add_argument("--workspace", default=".", help="repository root")
     parser.add_argument(
         "--model",
