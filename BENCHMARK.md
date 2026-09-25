@@ -85,3 +85,64 @@ These are benchmark-driven design changes, **not new benchmark results**. Re-run
 The benchmark is a reminder to measure the **complete harness loop**, not just the selector.
 
 A low-latency discrete decision model can still increase total latency or token usage when the integration adds main-model turns, repeats context, or falls back frequently. Runtime-native routing may behave differently and requires its own benchmark.
+
+
+## Native/custom agent-loop benchmark
+
+The repository now includes a second benchmark for the case the original Codex experiment did
+not measure: a **runtime-native Jev integration**.
+
+Run it with a fixed planner model for a controlled comparison:
+
+~~~bash
+export OPENROUTER_API_KEY="..."
+
+python benchmarks/native_loop.py \
+  --model <fixed-openrouter-model-id> \
+  --runs 5 \
+  --json-out benchmark-results/native-loop.json \
+  --markdown-out benchmark-results/native-loop.md
+~~~
+
+The benchmark runs the same small deterministic coding scenarios through two arms:
+
+1. **Baseline planner** — the planner sees the full tool registry on every step and returns
+   both the selected tool and its arguments.
+2. **Native Jev loop** — the runtime calls `JevToolRouter` directly, outside a planner turn.
+   When Jev selects an argument-bearing tool, the planner sees only that selected tool schema.
+   Argument-free tools execute without a planner call. A Jev fallback returns control to the
+   planner with the full registry.
+
+The scenario order is seeded and both arms operate on fresh in-memory repositories. The
+benchmark records:
+
+- success rate
+- planner requests
+- planner input, output, and total tokens
+- Jev request count
+- Jev routing wall time
+- Jev fallback count
+- tool calls
+- end-to-end elapsed time
+
+The generated Markdown report also shows per-run results and the planner-token delta between
+the native and baseline arms.
+
+### What this benchmark does and does not prove
+
+This benchmark isolates the architecture that `harness-router` is designed for: Jev is
+invoked by the harness runtime rather than through an additional main-model helper turn. It
+therefore answers a different question from the skill-driven Codex benchmark above.
+
+The scenarios are intentionally small and synthetic. They are useful for detecting routing
+overhead and token duplication, but they are not evidence that every coding agent or repository
+will get the same result.
+
+The current script reports planner tokens separately from Jev activity. It does **not** claim a
+full-system token total for the Decisions API, because `OpenRouterJevProvider` exposes the
+decision result rather than provider token-usage metadata. Use the Jev request count and routing
+wall time alongside planner tokens, and add provider-side cost data if you need an end-to-end
+price comparison.
+
+For publishable results, use a fixed planner model, keep the seed and task set constant, run
+multiple repetitions, and report failures as well as successful runs.
