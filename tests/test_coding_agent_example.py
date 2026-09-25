@@ -1,4 +1,4 @@
-from examples.coding_agent import _parse_model_object
+from examples.coding_agent import _normalize_planner_action, _parse_model_object
 
 
 def test_parse_mcp_style_tool_call_with_leading_prose() -> None:
@@ -36,3 +36,34 @@ def test_parse_mcp_style_tool_call_multiple_parameters() -> None:
             "new": "baz",
         },
     }
+
+
+def test_normalize_name_arguments_shape() -> None:
+    assert _normalize_planner_action(
+        {"name": "read_file", "arguments": {"path": "examples/coding_agent.py"}}
+    ) == ("read_file", {"path": "examples/coding_agent.py"})
+
+
+def test_normalize_nested_function_with_json_arguments() -> None:
+    assert _normalize_planner_action(
+        {
+            "function": {
+                "name": "replace_text",
+                "arguments": '{"path":"x.py","old":"a","new":"b"}',
+            }
+        }
+    ) == (
+        "replace_text",
+        {"path": "x.py", "old": "a", "new": "b"},
+    )
+
+
+def test_normalize_tool_call_wrapper_with_parameters() -> None:
+    assert _normalize_planner_action(
+        {
+            "tool_call": {
+                "name": "search_code",
+                "parameters": {"query": "JevToolRouter"},
+            }
+        }
+    ) == ("search_code", {"query": "JevToolRouter"})
