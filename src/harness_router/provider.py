@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Protocol
 
@@ -38,7 +39,14 @@ class OpenRouterJevProvider:
         self._model = model
         self._base_url = base_url
         self._owns_client = client is None
-        self._client = client or httpx.AsyncClient(timeout=timeout_seconds)
+        self._client = client or httpx.AsyncClient(
+            timeout=timeout_seconds,
+            limits=httpx.Limits(
+                max_connections=16,
+                max_keepalive_connections=8,
+                keepalive_expiry=30.0,
+            ),
+        )
 
     @classmethod
     def from_config(
@@ -65,9 +73,19 @@ class OpenRouterJevProvider:
         if len(criteria) < 2:
             raise ValueError("Jev choice requires at least two criteria")
 
+        state_payload: object = state
+        if state.lstrip().startswith(("{", "[")):
+            try:
+                parsed_state = json.loads(state)
+            except ValueError:
+                pass
+            else:
+                if isinstance(parsed_state, (dict, list)):
+                    state_payload = parsed_state
+
         payload = {
             "model": self._model,
-            "state": state,
+            "state": state_payload,
             "questions": {
                 "route": {
                     "type": "choice",
