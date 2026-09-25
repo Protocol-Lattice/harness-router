@@ -34,6 +34,7 @@ The router is intentionally small:
 - Jev-backed discrete routing through OpenRouter
 - hybrid Jev + planner fallback
 - hierarchical routing for larger tool registries
+- optional bounded Monte Carlo Tree Search (MCTS) for multi-step lookahead
 - confidence-aware decisions
 - MCP and generic tool adapters
 - conservative risk metadata
@@ -260,6 +261,83 @@ RoutingConfig(mode=RoutingMode.PLANNER_ONLY)
 
 The router immediately returns a planner fallback decision. No Jev provider is required.
 
+## Monte Carlo Tree Search
+
+For decisions where the best **first** tool depends on what is likely to happen several
+steps later, use `MCTSToolRouter`.
+
+MCTS is intentionally optional and bounded. It requires a side-effect-free
+`SearchEnvironment` that predicts:
+
+- which tools would be available in a simulated state
+- the next simulated `HarnessState`
+- an immediate reward
+- a heuristic value for a simulated state
+
+The simulator must not execute real shell commands, writes, browser actions, or other
+external side effects. Only the final first action selected by the search should go through
+the normal harness executor and approval policy.
+
+Jev can be supplied as a policy prior. By default, MCTS performs at most **one policy-router
+evaluation** at the first ambiguous node (normally the root). The remaining simulations
+are local, so increasing `simulations` does not automatically multiply policy-router
+calls. For registries above `hierarchical_threshold`, that one router evaluation may
+internally use category-first Jev routing.
+
+~~~python
+from harness_router import (
+    HarnessState,
+    MCTSConfig,
+    MCTSToolRouter,
+    SimulatedStep,
+)
+
+
+class Simulator:
+    async def tools(self, state):
+        return available_tools_for(state)
+
+    async def transition(self, state, tool):
+        # Predict only; do not execute the real tool here.
+        next_state, reward, terminal = predict(state, tool)
+        return SimulatedStep(next_state, reward=reward, terminal=terminal)
+
+    async def evaluate(self, state):
+        return heuristic_value(state)
+
+
+mcts = MCTSToolRouter(
+    Simulator(),
+    policy_router=router,  # optional Jev prior
+    config=MCTSConfig(
+        simulations=64,
+        max_depth=4,
+        max_policy_evaluations=1,
+    ),
+)
+
+result = await mcts.search(state, tools)
+
+print(result.decision.tool)
+print(result.principal_variation)
+print(result.root_visits)
+~~~
+
+`route(...)` is also available when you only want the resulting `RouteDecision`.
+
+Search uses a PUCT-style selection score. `MCTSResult` additionally exposes the principal
+variation, root visit counts, root action values, simulation count, and the number of Jev
+policy evaluations used. For an MCTS-produced `RouteDecision`, `confidence` is the
+selected root action's **visit share** and `probabilities` are normalized root visit
+counts; they are not calibrated Jev confidence values. If the policy router falls back,
+MCTS uses a neutral prior rather than overriding that fallback with its probability map.
+
+A runnable coding-agent example is in:
+
+~~~text
+examples/mcts_coding_agent.py
+~~~
+
 ## Hierarchical routing
 
 Large flat tool lists are harder to route efficiently.
@@ -380,11 +458,12 @@ A cost-aware agent loop looks like this:
 1. Main planner creates/updates the goal
 2. Harness builds compact state
 3. If tool choice is genuinely ambiguous, harness-router chooses the next tool
-4. Otherwise, use the planner's obvious next tool directly
-5. Main planner generates required arguments
-6. Execution policy checks permission
-7. Harness executes the tool
-8. Result becomes the next observation
+4. If multi-step consequences matter and a safe simulator exists, optionally run MCTS
+5. Otherwise, use the planner's obvious next tool directly
+6. Main planner generates required arguments
+7. Execution policy checks permission
+8. Harness executes the tool
+9. Result becomes the next observation
 ~~~
 
 ## Stateful routing and loop detection
@@ -484,6 +563,19 @@ RoutingConfig(
 )
 ~~~
 
+### MCTSConfig
+
+~~~python
+MCTSConfig(
+    simulations=64,
+    max_depth=4,
+    exploration_constant=1.5,
+    discount=0.95,
+    max_policy_evaluations=1,
+    min_prior=1e-6,
+)
+~~~
+
 ### OpenRouterConfig
 
 ~~~python
@@ -526,8 +618,11 @@ flowchart LR
     B -->|small registry| J[Jev decision]
     B -->|large registry| C[Category decision]
     C --> J
+    B -->|optional lookahead| M[MCTS + simulator]
+    J -->|policy prior| M
 
     J --> P{Confidence policy}
+    M --> X
     P -->|high| X[Selected tool]
     P -->|uncertain| F[Planner fallback]
 
