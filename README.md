@@ -444,6 +444,92 @@ Use examples/prompts/find_and_fix_bugs.md as your task instructions.
 Inspect this repository, find a real bug, fix it, and verify the fix.
 ~~~
 
+
+### UTCP CodeMode workflow example
+
+For multi-tool workflows, use the CodeMode example:
+
+~~~text
+examples/utcp_codemode.py
+~~~
+
+It uses this control flow:
+
+~~~text
+goal
+  ↓
+OpenRouter Jev
+  ↓
+select CodeMode workflow
+  ↓
+CodeMode program
+  ↓
+multiple UTCP tool calls
+  ↓
+single workflow result
+~~~
+
+Install:
+
+~~~bash
+pip install -e ".[utcp]"
+export OPENROUTER_API_KEY="your-key"
+~~~
+
+Inspect a repository and read a target file:
+
+~~~bash
+python examples/utcp_codemode.py \
+  --goal "Inspect README.md and show the repository layout" \
+  --path README.md \
+  --execute \
+  --show-code
+~~~
+
+Write and verify a file in one CodeMode execution:
+
+~~~bash
+python examples/utcp_codemode.py \
+  --goal "Write hello.txt with hello and verify it" \
+  --path hello.txt \
+  --content "hello" \
+  --execute \
+  --allow-mutation \
+  --show-code
+~~~
+
+The generated CodeMode program is conceptually:
+
+~~~python
+written = local.fs_write(path="hello.txt", content="hello")
+verified = local.fs_read(path="hello.txt")
+return {"write": written, "read": verified}
+~~~
+
+Patch and verify:
+
+~~~bash
+python examples/utcp_codemode.py \
+  --goal "Patch hello.txt from hello to hello world and verify it" \
+  --path hello.txt \
+  --old-text "hello" \
+  --new-text "hello world" \
+  --execute \
+  --allow-mutation
+~~~
+
+Run Bash through CodeMode:
+
+~~~bash
+python examples/utcp_codemode.py \
+  --goal "Show git status" \
+  --command "git status --short" \
+  --execute \
+  --allow-bash
+~~~
+
+The example deliberately routes between **workflow-level actions** rather than making Jev select every atomic tool call. Once Jev selects a workflow, CodeMode can chain the UTCP tools inside one Python execution.
+
 ## Safety and execution policy
 
 Routing and execution are deliberately separate.
