@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import ast
 import asyncio
+import html
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -617,13 +619,17 @@ def _parse_model_object(raw: str) -> dict[str, Any]:
             try:
                 value = json.loads(text[start : end + 1])
             except json.JSONDecodeError:
-                value = _parse_text_tool_call(text)
+                value = _parse_non_json_tool_call(text)
         else:
-            value = _parse_text_tool_call(text)
+            value = _parse_non_json_tool_call(text)
 
     if value is None or not isinstance(value, dict):
         raise RuntimeError(f"planner returned malformed JSON/tool call: {text[:300]!r}")
     return value
+
+
+def _parse_non_json_tool_call(raw: str) -> dict[str, Any] | None:
+    return _parse_text_tool_call(raw) or _parse_mcp_tool_call(raw)
 
 
 def _parse_text_tool_call(raw: str) -> dict[str, Any] | None:
@@ -651,6 +657,34 @@ def _parse_text_tool_call(raw: str) -> dict[str, Any] | None:
             return None
 
     return {"tool": node.func.id, "arguments": arguments}
+
+
+def _parse_mcp_tool_call(raw: str) -> dict[str, Any] | None:
+    """Parse XML-like MCP tool calls emitted as plain text by some chat models."""
+    invoke = re.search(
+        r'<invoke\s+name=["\']([^"\']+)["\']\s*>(.*?)</invoke>',
+        raw,
+        flags=re.DOTALL,
+    )
+    if invoke is None:
+        return None
+
+    tool = html.unescape(invoke.group(1)).strip()
+    if not tool:
+        return None
+
+    arguments: dict[str, Any] = {}
+    for name, value in re.findall(
+        r'<parameter\s+name=["\']([^"\']+)["\']\s*>(.*?)</parameter>',
+        invoke.group(2),
+        flags=re.DOTALL,
+    ):
+        key = html.unescape(name).strip()
+        if not key:
+            return None
+        arguments[key] = html.unescape(value).strip()
+
+    return {"tool": tool, "arguments": arguments}
 
 
 async def async_main(args: argparse.Namespace) -> int:
