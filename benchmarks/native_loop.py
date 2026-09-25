@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import asyncio
 import json
 import os
@@ -421,12 +422,55 @@ def _parse_json_object(raw: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         start = raw.find("{")
         end = raw.rfind("}")
-        if start < 0 or end <= start:
-            raise RuntimeError(f"planner returned malformed JSON: {raw[:200]!r}") from None
-        value = json.loads(raw[start : end + 1])
+        if start >= 0 and end > start:
+            try:
+                value = json.loads(raw[start : end + 1])
+            except json.JSONDecodeError:
+                value = _parse_text_tool_call(raw)
+        else:
+            value = _parse_text_tool_call(raw)
+
+    if value is None:
+        raise RuntimeError(f"planner returned malformed JSON/tool call: {raw[:200]!r}")
     if not isinstance(value, dict):
-        raise RuntimeError("planner JSON response must be an object")
+        raise RuntimeError("planner response must be an object")
     return value
+
+
+def _parse_text_tool_call(raw: str) -> dict[str, Any] | None:
+    """Parse textual tool-call output emitted by some OpenRouter chat models.
+
+    Example:
+        <|tool_call_start|>[read_file(path='src/retry.py')]<|tool_call_end|>
+    """
+    text = raw.strip()
+    text = text.replace("<|tool_call_start|>", "").replace("<|tool_call_end|>", "").strip()
+
+    try:
+        node = ast.parse(text, mode="eval").body
+    except SyntaxError:
+        return None
+
+    if isinstance(node, ast.List):
+        if len(node.elts) != 1:
+            return None
+        node = node.elts[0]
+
+    if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+        return None
+    if node.args:
+        return None
+
+    arguments: dict[str, Any] = {}
+    for keyword in node.keywords:
+        if keyword.arg is None:
+            return None
+        try:
+            arguments[keyword.arg] = ast.literal_eval(keyword.value)
+        except (ValueError, TypeError):
+            return None
+
+    return {"tool": node.func.id, "arguments": arguments}
 
 
 def _transcript_text(transcript: Sequence[str]) -> str:
