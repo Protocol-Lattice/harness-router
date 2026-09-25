@@ -32,6 +32,27 @@ executor
 observation
 ```
 
+## Codex fast path
+
+In unmodified Codex, invoking a routing helper is itself an extra model/tool turn. Optimize for
+the complete loop, not selector latency in isolation.
+
+Use normal Codex tool calling for linear work. Invoke the helper at most once, only at a
+high-ambiguity branch point where at least four tools remain plausible after deterministic
+pruning and a wrong choice is likely to create multiple exploratory turns.
+
+For the helper call:
+
+- pass 4-12 plausible candidates when possible
+- use short descriptions; omit full input schemas
+- send only the latest observation and decision-relevant constraints
+- use equal direct/fallback thresholds to avoid a planner-confirmation band
+- stop routing for the task after a fallback or planner override
+- do not use hierarchical routing for medium registries when one flat request fits
+
+The bundled skill helper defaults to a 2 second provider timeout, 0.72/0.72 confidence
+thresholds, compact state limits, and flat routing through 48 tools.
+
 ## Minimal setup
 
 ```python

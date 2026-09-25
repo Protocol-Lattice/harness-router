@@ -56,51 +56,94 @@ Confidence is not authorization. Always preserve the harness's execution policy 
 
 ## Cost-aware routing in Codex
 
-When this skill runs inside **unmodified Codex**, the routing helper itself creates an extra
-tool turn, and Codex needs another model turn to generate tool arguments. Do **not** route
-every step.
+Unmodified Codex pays a full extra model turn when it calls the routing helper, then usually
+needs another turn to execute the selected tool or generate its arguments. Therefore **normal
+Codex tool calling is the default fast path**. Treat the helper as an exception for expensive
+ambiguity, not as a per-step router.
 
-Use the helper only when all of these are true:
+### Hard routing budget
 
-- there are at least 3 genuinely plausible next tools, or a large registry makes selection costly
-- the choice is a closed discrete decision rather than open-ended reasoning
-- the next tool is not already obvious from the latest observation
-- the router is likely to avoid at least one exploratory planner/tool turn
+- Default to **0 helper calls** for linear coding work.
+- Use **at most 1 helper call per user task**.
+- After any router fallback, provider error, or explicit planner override, do not call the
+  helper again for that task.
+- Never route the same state twice.
+- Never call the helper merely to confirm a tool Codex has already selected.
 
-For coding tasks, prefer normal Codex tool calling for obvious linear work such as
-`read -> edit -> test`. Never call the helper just to confirm a tool Codex has already chosen.
+### Call the helper only when all of these are true
 
-Use a routing budget of **at most 2 helper calls per user task**. After the first router
-fallback or explicit planner override, stop using the helper for the rest of that task and
-continue with normal Codex reasoning. Do not retry the same state through Jev.
+- at least **4 next tools are genuinely plausible** after deterministic pruning, or a large
+  registry still has no obvious shortlist
+- the choice is closed and discrete rather than open-ended reasoning
+- the ambiguity is high enough that a wrong choice would likely cause **multiple exploratory
+  planner/tool turns**
+- the latest observation does not already imply an exact next tool
+- the candidate set can be represented compactly
 
-The helper prints compact JSON by default. Use `--verbose` only for diagnostics because
-the probability map becomes additional context for the next model turn.
+When possible, pass only **4-12 plausible candidates**, not the entire registry. Omit input
+schemas and long prose from the helper payload; use only name, one-clause description,
+category, and risk. The main planner already has the schemas needed for execution.
+
+### Skip the helper for the common coding fast path
+
+Do not route obvious sequences such as:
+
+- exact file/path known -> read it
+- exact symbol known -> search/read it
+- edit is already determined -> patch/write it
+- edit completed -> run the focused test
+- focused test passed -> run the broader test suite
+- test failed with a precise file/line -> inspect that location
+
+Also skip routing when the selected tool would only introduce an extra planner turn without
+resolving real ambiguity, for example choosing `write_file` when there is already one obvious
+write target and Codex must immediately generate the patch anyway.
+
+### Fast Codex helper profile
+
+The bundled `scripts/route.py` intentionally uses a more aggressive profile than the library
+defaults:
+
+```text
+direct threshold:       0.72
+fallback threshold:     0.72
+hierarchical threshold: 48
+provider timeout:       2.0s
+description limit:      96 chars
+state field limit:      400 chars
+history limit:          1 action
+constraint limit:       2
+```
+
+Equal direct/fallback thresholds remove the `planner_confirmation` confidence band for the
+Codex helper. A useful Jev choice is returned directly; genuinely low-confidence/no-match
+decisions fall back. This avoids paying for Jev merely to ask Codex to confirm Jev.
+
+The higher hierarchical threshold keeps medium-sized registries in a single flat Jev request
+instead of category-first + tool-selection requests. The shorter timeout bounds tail latency.
+
+Use `--verbose` only for diagnostics. The compact output is the normal path.
 
 ## Workflow
 
 When routing an actual harness step:
 
-1. Build a compact `HarnessState` from:
-   - user goal
-   - latest observation
-   - last action
-   - short recent-action history
-   - relevant constraints
-2. Convert currently available tools to `ToolDescriptor`.
-3. Prefer existing adapters:
-   - `MCPToolAdapter` for MCP tool definitions
-   - `GenericToolAdapter` for generic dictionaries
-4. Assign conservative risk levels. If unsure, do not mark a mutating tool as low risk.
-5. Call `JevToolRouter.route(...)` only when the cost-aware conditions above are met.
-6. If `decision.fallback` is true, resume normal Codex/planner reasoning and do not route again for this task.
-7. If a tool is selected, validate that:
-   - the tool still exists
-   - required arguments can be produced
-   - execution policy allows it
-8. Use the main model to generate free-form tool arguments such as code, patches, shell commands, or long text.
-9. Execute the tool only through the harness's normal executor/approval boundary.
-10. Feed the result back as the next compact observation.
+1. First apply the deterministic fast path. If the next tool is obvious, call it normally and
+   do not invoke Jev.
+2. At a real ambiguity point, prune the candidate list locally before invoking the helper.
+3. Build the smallest useful `HarnessState` from the user goal, latest observation, last
+   action, and only constraints that can change the choice.
+4. Convert only plausible candidates to `ToolDescriptor`; omit long schemas and irrelevant
+   tools.
+5. Assign conservative risk levels. If unsure, do not mark a mutating tool as low risk.
+6. Call `JevToolRouter.route(...)` only if the one-call budget is still unused.
+7. If `decision.fallback` is true, resume normal Codex/planner reasoning for the rest of the
+   task.
+8. If a tool is selected, validate that it still exists, its arguments can be produced, and
+   execution policy allows it.
+9. Use the main model only for free-form arguments that actually require generation, then
+   execute through the normal harness approval boundary.
+10. Continue the rest of the task with normal Codex tool calling; do not route again.
 
 ## Fast CLI routing
 

@@ -36,9 +36,19 @@ def parse_args() -> argparse.Namespace:
         choices=[mode.value for mode in RoutingMode],
         default=RoutingMode.HYBRID.value,
     )
-    parser.add_argument("--direct-threshold", type=float, default=0.85)
-    parser.add_argument("--fallback-threshold", type=float, default=0.60)
-    parser.add_argument("--hierarchical-threshold", type=int, default=24)
+    parser.add_argument("--direct-threshold", type=float, default=0.72)
+    parser.add_argument("--fallback-threshold", type=float, default=0.72)
+    parser.add_argument("--hierarchical-threshold", type=int, default=48)
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=2.0,
+        help="Bound Jev provider latency for the Codex helper.",
+    )
+    parser.add_argument("--description-limit", type=int, default=96)
+    parser.add_argument("--state-field-limit", type=int, default=400)
+    parser.add_argument("--history-limit", type=int, default=1)
+    parser.add_argument("--constraint-limit", type=int, default=2)
     parser.add_argument(
         "--verbose",
         action="store_true",
@@ -68,7 +78,7 @@ async def run(args: argparse.Namespace) -> int:
     adapter = GenericToolAdapter()
     tools = [adapter.normalize(tool) for tool in load_tools(args.tools_json)]
 
-    provider = OpenRouterJevProvider.from_config(OpenRouterConfig())
+    provider = OpenRouterJevProvider.from_config(\n        OpenRouterConfig(timeout_seconds=args.timeout_seconds)\n    )
     router = JevToolRouter(
         provider,
         RoutingConfig(
@@ -76,6 +86,10 @@ async def run(args: argparse.Namespace) -> int:
             direct_execution_threshold=args.direct_threshold,
             fallback_threshold=args.fallback_threshold,
             hierarchical_threshold=args.hierarchical_threshold,
+            description_limit=args.description_limit,
+            state_field_limit=args.state_field_limit,
+            history_limit=args.history_limit,
+            constraint_limit=args.constraint_limit,
         ),
     )
 
