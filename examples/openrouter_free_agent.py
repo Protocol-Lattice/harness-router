@@ -18,18 +18,27 @@ class AgentPlan:
 
 
 class OpenRouterFreeAgent:
+    """Coding planner backed by OpenRouter's free model router.
+
+    Free-router models can vary between requests, so this example deliberately
+    uses a simple tagged text envelope instead of embedding multiline Python
+    source in a JSON string.
+    """
+
     def __init__(
         self,
         *,
         api_key: str,
         model: str = "openrouter/free",
         timeout_seconds: float = 90.0,
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("api_key must not be empty")
         self._api_key = api_key
         self._model = model
-        self._client = httpx.AsyncClient(timeout=timeout_seconds)
+        self._owns_client = client is None
+        self._client = client or httpx.AsyncClient(timeout=timeout_seconds)
 
     async def plan(
         self,
@@ -46,7 +55,19 @@ class OpenRouterFreeAgent:
 You do not directly access the filesystem or shell. Generate a short Python
 program that runs inside UTCP CodeMode with registered tools.
 
-Return only a JSON object with keys summary, code, and done.
+Return EXACTLY this tagged envelope, without Markdown fences:
+
+<summary>short explanation of the next step</summary>
+<done>false</done>
+<code>
+Python CodeMode program here
+</code>
+
+For the finish phase use:
+
+<summary>final concise result</summary>
+<done>true</done>
+<code></code>
 
 CodeMode rules:
 - Tool calls are synchronous. Do not use await.
@@ -62,7 +83,7 @@ Phase rules:
 - reproduce: use local.bash_run for targeted tests/checks.
 - fix: use local.fs_read plus local.fs_patch or local.fs_write; prefer fs_patch.
 - verify: use local.bash_run and optionally local.fs_read.
-- finish: set done=true and code to an empty string.
+- finish: done=true and empty code.
 
 Do not finish until a concrete bug was identified, fixed, and verified.
 """
@@ -78,18 +99,49 @@ Do not finish until a concrete bug was identified, fixed, and verified.
             f"Latest observation:\n{observation or '(none yet)'}\n\n"
             f"Available UTCP CodeMode interfaces:\n{interfaces}\n\n"
             "Generate the smallest useful next CodeMode program for this phase. "
-            "If permission is missing, explain it in summary, use an empty code "
-            "string, and keep done=false."
+            "If permission is missing, explain it in summary, use empty code, "
+            "and keep done=false."
         )
 
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+
+        last_error: RuntimeError | None = None
+        for attempt in range(2):
+            raw = await self._complete(messages)
+            try:
+                return _parse_plan_response(raw)
+            except RuntimeError as exc:
+                last_error = exc
+                if attempt == 0:
+                    messages.extend(
+                        [
+                            {"role": "assistant", "content": raw},
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Your previous response did not match the required "
+                                    "tagged envelope. Retry now. Return only "
+                                    "<summary>...</summary><done>true|false</done>"
+                                    "<code>...</code>. Do not use Markdown fences and "
+                                    "do not return JSON."
+                                ),
+                            },
+                        ]
+                    )
+
+        assert last_error is not None
+        raise RuntimeError(
+            "OpenRouter agent returned an invalid plan after one retry"
+        ) from last_error
+
+    async def _complete(self, messages: list[dict[str, str]]) -> str:
         payload = {
             "model": self._model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.2,
+            "messages": messages,
+            "temperature": 0.1,
             "max_tokens": 2200,
         }
 
@@ -118,23 +170,58 @@ Do not finish until a concrete bug was identified, fixed, and verified.
 
         if not isinstance(raw, str) or not raw.strip():
             raise RuntimeError("OpenRouter returned an empty agent response")
+        return raw
 
-        value = _parse_json_object(raw)
+    async def close(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+
+def _parse_plan_response(raw: str) -> AgentPlan:
+    text = raw.strip()
+
+    try:
+        summary = _extract_tag(text, "summary").strip()
+        done_text = _extract_tag(text, "done").strip().lower()
+        code = _extract_tag(text, "code").strip()
+    except RuntimeError:
+        # Backward-compatible fallback for models that still return valid JSON.
+        value = _parse_json_object(text)
         summary = value.get("summary")
         code = value.get("code")
         done = value.get("done", False)
 
         if not isinstance(summary, str):
-            raise RuntimeError("agent response is missing string field 'summary'")
+            raise RuntimeError("agent response is missing a summary")
         if not isinstance(code, str):
-            raise RuntimeError("agent response is missing string field 'code'")
+            raise RuntimeError("agent response is missing code")
         if not isinstance(done, bool):
-            raise RuntimeError("agent response field 'done' must be boolean")
+            raise RuntimeError("agent response has an invalid done value")
+        return AgentPlan(summary=summary.strip(), code=code.strip(), done=done)
 
-        return AgentPlan(summary=summary, code=code, done=done)
+    if not summary:
+        raise RuntimeError("agent response contains an empty summary")
+    if done_text not in {"true", "false"}:
+        raise RuntimeError("agent response done tag must be true or false")
 
-    async def close(self) -> None:
-        await self._client.aclose()
+    return AgentPlan(
+        summary=summary,
+        code=code,
+        done=done_text == "true",
+    )
+
+
+def _extract_tag(text: str, tag: str) -> str:
+    open_tag = f"<{tag}>"
+    close_tag = f"</{tag}>"
+    start = text.find(open_tag)
+    if start < 0:
+        raise RuntimeError(f"agent response is missing <{tag}>")
+    start += len(open_tag)
+    end = text.find(close_tag, start)
+    if end < 0:
+        raise RuntimeError(f"agent response is missing </{tag}>")
+    return text[start:end]
 
 
 def _parse_json_object(raw: str) -> dict[str, Any]:
@@ -155,12 +242,12 @@ def _parse_json_object(raw: str) -> dict[str, Any]:
         start = text.find("{")
         end = text.rfind("}")
         if start < 0 or end <= start:
-            raise RuntimeError("agent did not return a JSON object") from exc
+            raise RuntimeError("agent did not return a parseable plan") from exc
         try:
             value = json.loads(text[start : end + 1])
         except json.JSONDecodeError as nested:
             raise RuntimeError("agent returned malformed JSON") from nested
 
     if not isinstance(value, dict):
-        raise RuntimeError("agent response must be a JSON object")
+        raise RuntimeError("agent response must be an object")
     return value
