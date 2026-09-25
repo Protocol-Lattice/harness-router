@@ -5,7 +5,9 @@ import ast
 import asyncio
 import html
 import json
+import math
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -205,6 +207,9 @@ class AgentStats:
     subagent_plans: int = 0
     subagents_spawned: int = 0
     subagent_tool_calls: int = 0
+    mcts_decisions: int = 0
+    mcts_simulations: int = 0
+    mcts_ms: float = 0.0
 
     @property
     def planner_tokens(self) -> int:
@@ -222,6 +227,189 @@ class AgentState:
     router_calls: int = 0
     finished: bool = False
     final_summary: str = ""
+
+
+@dataclass(slots=True, frozen=True)
+class MCTSState:
+    last_tool: str | None
+    inspected: bool
+    mutated: bool
+    tests_passed: bool
+    tests_failed: bool
+
+
+@dataclass(slots=True)
+class MCTSNode:
+    state: MCTSState
+    parent: MCTSNode | None = None
+    action: str | None = None
+    visits: int = 0
+    value: float = 0.0
+    children: dict[str, MCTSNode] = field(default_factory=dict)
+    untried_actions: list[str] = field(default_factory=list)
+
+
+class MCTSActionSelector:
+    """Small Monte Carlo tree search over tool sequences.
+
+    The search is intentionally model-free: it explores only tool categories and
+    lifecycle constraints. The planner still generates concrete arguments/code
+    for the selected tool, keeping MCTS cheap enough for a coding-agent example.
+    """
+
+    def __init__(
+        self,
+        *,
+        tools: Sequence[ToolDescriptor],
+        simulations: int,
+        max_depth: int,
+        exploration: float,
+        seed: int,
+        stats: AgentStats,
+    ) -> None:
+        self.tools = tuple(tools)
+        self.simulations = simulations
+        self.max_depth = max_depth
+        self.exploration = exploration
+        self.random = random.Random(seed)
+        self.stats = stats
+
+    def select(self, state: AgentState) -> tuple[str, float]:
+        started = time.perf_counter()
+        root_state = _mcts_state_from_agent(state)
+        root = MCTSNode(
+            state=root_state,
+            untried_actions=self._legal_actions(root_state),
+        )
+        if not root.untried_actions:
+            raise RuntimeError("MCTS has no legal actions")
+
+        for _ in range(self.simulations):
+            node = root
+            depth = 0
+
+            while (
+                depth < self.max_depth
+                and not node.untried_actions
+                and node.children
+            ):
+                node = self._select_child(node)
+                depth += 1
+
+            if depth < self.max_depth and node.untried_actions:
+                index = self.random.randrange(len(node.untried_actions))
+                action = node.untried_actions.pop(index)
+                next_state = _mcts_transition(node.state, action)
+                child = MCTSNode(
+                    state=next_state,
+                    parent=node,
+                    action=action,
+                    untried_actions=self._legal_actions(next_state),
+                )
+                node.children[action] = child
+                node = child
+                depth += 1
+
+            reward = self._rollout(node.state, depth)
+            self._backpropagate(node, reward)
+
+        if not root.children:
+            action = root.untried_actions[0]
+            score = 0.0
+        else:
+            action, best = max(
+                root.children.items(),
+                key=lambda item: (
+                    item[1].visits,
+                    item[1].value / max(1, item[1].visits),
+                    item[0],
+                ),
+            )
+            score = best.value / max(1, best.visits)
+
+        self.stats.mcts_decisions += 1
+        self.stats.mcts_simulations += self.simulations
+        self.stats.mcts_ms += (time.perf_counter() - started) * 1000
+        return action, score
+
+    def _select_child(self, node: MCTSNode) -> MCTSNode:
+        log_parent = math.log(max(1, node.visits))
+
+        def uct(child: MCTSNode) -> float:
+            if child.visits == 0:
+                return math.inf
+            exploit = child.value / child.visits
+            explore = self.exploration * math.sqrt(log_parent / child.visits)
+            return exploit + explore
+
+        return max(node.children.values(), key=uct)
+
+    def _rollout(self, state: MCTSState, depth: int) -> float:
+        total = 0.0
+        current = state
+        remaining = max(0, self.max_depth - depth)
+
+        for _ in range(remaining):
+            actions = self._legal_actions(current)
+            if not actions:
+                break
+            action = max(
+                actions,
+                key=lambda candidate: (
+                    _mcts_action_reward(current, candidate),
+                    self.random.random(),
+                ),
+            )
+            total += _mcts_action_reward(current, action)
+            current = _mcts_transition(current, action)
+            if action == "finish":
+                break
+
+        return total
+
+    @staticmethod
+    def _backpropagate(node: MCTSNode, reward: float) -> None:
+        current: MCTSNode | None = node
+        while current is not None:
+            current.visits += 1
+            current.value += reward
+            current = current.parent
+
+    def _legal_actions(self, state: MCTSState) -> list[str]:
+        available = {tool.name for tool in self.tools}
+        inspect = [
+            name
+            for name in ("read_file", "search_code", "list_files")
+            if name in available
+        ]
+        mutate = [
+            name
+            for name in ("replace_text", "write_file")
+            if name in available
+        ]
+
+        if state.tests_passed and "finish" in available:
+            return ["finish"]
+
+        if not state.inspected:
+            actions = list(inspect)
+            if "run_tests" in available:
+                actions.append("run_tests")
+            return actions
+
+        if state.mutated and not state.tests_passed:
+            actions: list[str] = []
+            if "run_tests" in available:
+                actions.append("run_tests")
+            actions.extend(inspect)
+            actions.extend(mutate)
+            return actions
+
+        actions = list(mutate)
+        actions.extend(inspect)
+        if state.tests_failed and "run_tests" in available:
+            actions.append("run_tests")
+        return actions
 
 
 class Planner:
@@ -662,6 +850,7 @@ class CodingAgent:
         max_steps: int,
         max_subagents: int,
         subagent_steps: int,
+        mcts: MCTSActionSelector | None,
     ) -> None:
         self.planner = planner
         self.router = router
@@ -670,6 +859,7 @@ class CodingAgent:
         self.max_steps = max_steps
         self.max_subagents = max_subagents
         self.subagent_steps = subagent_steps
+        self.mcts = mcts
 
     async def run(self, goal: str) -> AgentState:
         state = AgentState(goal=goal)
@@ -780,6 +970,20 @@ class CodingAgent:
                         arguments = {}
                     return descriptor.name, arguments
 
+        if self.mcts is not None:
+            tool_name, score = self.mcts.select(state)
+            descriptor = _tool_by_name(tool_name)
+            if descriptor is not None:
+                print(f"[mcts] {tool_name} (mean_reward={score:.3f})")
+                if descriptor.schema.get("required") or descriptor.name == "finish":
+                    arguments = await self.planner.arguments_for(
+                        state=state,
+                        tool=descriptor,
+                    )
+                else:
+                    arguments = {}
+                return descriptor.name, arguments
+
         return await self.planner.choose_tool(state=state, tools=TOOLS)
 
     @staticmethod
@@ -806,6 +1010,71 @@ class CodingAgent:
 
         # A failing test can make inspect/search/edit/verify genuinely ambiguous.
         return "tests failed" in state.observation.lower()
+
+
+def _mcts_state_from_agent(state: AgentState) -> MCTSState:
+    inspected = any(
+        summary.tool in {"list_files", "read_file", "search_code"}
+        for summary in state.history
+    ) or any(item.startswith("parallel_subagents ->") for item in state.transcript)
+    mutated = any(
+        summary.tool in {"replace_text", "write_file"}
+        for summary in state.history
+    )
+    observation = state.observation.lower()
+    return MCTSState(
+        last_tool=state.history[-1].tool if state.history else None,
+        inspected=inspected,
+        mutated=mutated,
+        tests_passed=state.tests_passed,
+        tests_failed="tests failed" in observation,
+    )
+
+
+def _mcts_transition(state: MCTSState, action: str) -> MCTSState:
+    inspected = state.inspected or action in {"list_files", "read_file", "search_code"}
+    mutated = state.mutated or action in {"replace_text", "write_file"}
+    tests_passed = state.tests_passed
+
+    # Rollouts are optimistic about verification after a mutation. Runtime truth
+    # still comes only from Workspace.execute("run_tests").
+    if action == "run_tests" and mutated:
+        tests_passed = True
+    elif action in {"replace_text", "write_file"}:
+        tests_passed = False
+
+    return MCTSState(
+        last_tool=action,
+        inspected=inspected,
+        mutated=mutated,
+        tests_passed=tests_passed,
+        tests_failed=False if action == "run_tests" else state.tests_failed,
+    )
+
+
+def _mcts_action_reward(state: MCTSState, action: str) -> float:
+    reward = 0.0
+
+    if action in {"list_files", "read_file", "search_code"}:
+        reward += 2.0 if not state.inspected else 0.4
+        if state.tests_failed:
+            reward += 1.0
+
+    if action in {"replace_text", "write_file"}:
+        reward += 3.0 if state.inspected else -5.0
+        if state.tests_failed:
+            reward += 1.5
+
+    if action == "run_tests":
+        reward += 4.0 if state.mutated and not state.tests_passed else -0.5
+
+    if action == "finish":
+        reward += 8.0 if state.tests_passed else -10.0
+
+    if action == state.last_tool:
+        reward -= 1.5
+
+    return reward
 
 
 def _normalize_model(model: str) -> str:
@@ -1103,6 +1372,17 @@ async def async_main(args: argparse.Namespace) -> int:
         ),
     )
 
+    mcts = None
+    if args.mcts_simulations > 0:
+        mcts = MCTSActionSelector(
+            tools=TOOLS,
+            simulations=args.mcts_simulations,
+            max_depth=args.mcts_depth,
+            exploration=args.mcts_exploration,
+            seed=args.mcts_seed,
+            stats=stats,
+        )
+
     agent = CodingAgent(
         planner=planner,
         router=router,
@@ -1111,6 +1391,7 @@ async def async_main(args: argparse.Namespace) -> int:
         max_steps=args.max_steps,
         max_subagents=args.subagents,
         subagent_steps=args.subagent_steps,
+        mcts=mcts,
     )
 
     try:
@@ -1138,6 +1419,9 @@ async def async_main(args: argparse.Namespace) -> int:
     print(f"subagent plans: {stats.subagent_plans}")
     print(f"subagents spawned: {stats.subagents_spawned}")
     print(f"subagent tool calls: {stats.subagent_tool_calls}")
+    print(f"mcts decisions: {stats.mcts_decisions}")
+    print(f"mcts simulations: {stats.mcts_simulations}")
+    print(f"mcts time: {stats.mcts_ms:.1f} ms")
 
     return 0 if state.finished and state.tests_passed else 1
 
@@ -1176,6 +1460,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=5,
         help="maximum inspect/report steps per subagent",
     )
+    parser.add_argument(
+        "--mcts-simulations",
+        type=int,
+        default=0,
+        help="MCTS simulations per tool decision; 0 disables MCTS",
+    )
+    parser.add_argument(
+        "--mcts-depth",
+        type=int,
+        default=4,
+        help="maximum MCTS tool-sequence depth",
+    )
+    parser.add_argument(
+        "--mcts-exploration",
+        type=float,
+        default=math.sqrt(2.0),
+        help="UCT exploration constant",
+    )
+    parser.add_argument(
+        "--mcts-seed",
+        type=int,
+        default=0,
+        help="random seed for reproducible MCTS rollouts",
+    )
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--test-timeout", type=float, default=120.0)
     return parser
@@ -1189,6 +1497,12 @@ def main() -> int:
         raise SystemExit(f"--subagents must be between 0 and {MAX_SUBAGENTS}")
     if args.subagent_steps < 1:
         raise SystemExit("--subagent-steps must be >= 1")
+    if args.mcts_simulations < 0:
+        raise SystemExit("--mcts-simulations must be >= 0")
+    if args.mcts_depth < 1:
+        raise SystemExit("--mcts-depth must be >= 1")
+    if args.mcts_exploration < 0:
+        raise SystemExit("--mcts-exploration must be >= 0")
     return asyncio.run(async_main(args))
 
 
