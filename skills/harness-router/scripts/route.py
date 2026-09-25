@@ -78,7 +78,9 @@ async def run(args: argparse.Namespace) -> int:
     adapter = GenericToolAdapter()
     tools = [adapter.normalize(tool) for tool in load_tools(args.tools_json)]
 
-    provider = OpenRouterJevProvider.from_config(\n        OpenRouterConfig(timeout_seconds=args.timeout_seconds)\n    )
+    provider = OpenRouterJevProvider.from_config(
+        OpenRouterConfig(timeout_seconds=args.timeout_seconds)
+    )
     router = JevToolRouter(
         provider,
         RoutingConfig(
