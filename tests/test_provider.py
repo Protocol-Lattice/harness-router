@@ -13,6 +13,7 @@ async def test_openrouter_jev_payload_and_response() -> None:
         assert request.headers["Authorization"] == "Bearer secret"
         payload = json.loads(request.content)
         assert payload["model"] == "typesafe/jev-1.13"
+        assert payload["state"] == {"goal": "inspect"}
         assert payload["questions"]["route"]["type"] == "choice"
         assert "read_file" in payload["questions"]["route"]["criteria"]
         return httpx.Response(
@@ -66,4 +67,33 @@ async def test_provider_rejects_unknown_choice() -> None:
             instructions="Choose",
             criteria={"a": "A", "b": "B"},
         )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_provider_preserves_plain_text_state() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["state"] == "plain state"
+        return httpx.Response(
+            200,
+            json={
+                "answers": {
+                    "route": {
+                        "type": "choice",
+                        "choice": "a",
+                        "probabilities": {"a": 1.0, "b": 0.0},
+                        "confidence": 1.0,
+                    }
+                }
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = OpenRouterJevProvider(api_key="secret", client=client)
+    await provider.choose(
+        state="plain state",
+        instructions="Choose",
+        criteria={"a": "A", "b": "B"},
+    )
     await client.aclose()

@@ -120,7 +120,9 @@ Codex helper. A useful Jev choice is returned directly; genuinely low-confidence
 decisions fall back. This avoids paying for Jev merely to ask Codex to confirm Jev.
 
 The higher hierarchical threshold keeps medium-sized registries in a single flat Jev request
-instead of category-first + tool-selection requests. The shorter timeout bounds tail latency.
+instead of category-first + tool-selection requests. For larger registries, the library also
+uses its adaptive hierarchy cost gate and only pays for two-stage routing when the estimated
+input reduction justifies the second request. The shorter timeout bounds tail latency.
 
 Use `--verbose` only for diagnostics. The compact output is the normal path.
 
@@ -255,7 +257,7 @@ whole sequence.
 
 ## Hierarchical routing
 
-Do not manually flatten very large tool registries. `JevToolRouter` automatically uses category-first routing when the number of tools exceeds `hierarchical_threshold` (default: 24). Smaller registries stay flat to avoid a second Jev request.
+Do not manually flatten very large tool registries. Above `hierarchical_threshold` (default: 24), `JevToolRouter` compares the estimated flat request size with category-first routing. It uses the two-call hierarchy only when the estimated input savings meet the configured minimum; otherwise it stays flat to avoid a second Jev request.
 
 Give tools useful categories where possible:
 

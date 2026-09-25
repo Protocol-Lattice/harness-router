@@ -75,7 +75,10 @@ The repository now targets the overhead exposed by this benchmark:
 - The skill stops using the helper after the first fallback or explicit planner override.
 - Helper output is compact by default and omits probability maps unless `--verbose` is requested.
 - Jev state/tool descriptions are truncated more aggressively.
-- Flat routing is used through 24 tools to avoid a second Jev request for medium-size registries.
+- Empty state fields are omitted and router-generated JSON is sent to OpenRouter as structured state instead of a JSON-escaped string.
+- Exact repeated state/tool decisions are memoized in a bounded in-process LRU cache.
+- Above the hierarchy threshold, a size estimate keeps routing flat unless category-first routing is expected to save at least 15% of routing input.
+- The owned HTTP client keeps connections alive longer to reduce reconnect/TLS overhead between agent steps.
 - `RoutingSession` opens a fallback circuit after repeated fallbacks so custom runtimes stop paying for a route that is not helping.
 
 These are benchmark-driven design changes, **not new benchmark results**. Re-run the controlled benchmark before claiming a measured latency or token reduction.
