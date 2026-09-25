@@ -62,11 +62,12 @@ from harness_router import (  # noqa: E402
     RoutingConfig,
     ToolDescriptor,
 )
+from utcp.utcp_client import UtcpClient  # noqa: E402
 from utcp_code_mode import CodeModeUtcpClient  # noqa: E402
 
 
 class ClosableCodeModeUtcpClient(CodeModeUtcpClient):
-    """Compatibility shim that closes the wrapped UTCP client."""
+    """Compatibility shim for code-mode with newer UTCP releases."""
 
     async def close(self) -> None:
         await self._base_client.close()
@@ -237,7 +238,7 @@ async def main() -> None:
         f"{shlex.quote(sys.executable)} {shlex.quote(str(PROVIDER))}"
     )
 
-    client = await ClosableCodeModeUtcpClient.create(
+    base_client = await UtcpClient.create(
         root_dir=str(workspace),
         config={
             "manual_call_templates": [
@@ -250,6 +251,7 @@ async def main() -> None:
             ]
         },
     )
+    client = ClosableCodeModeUtcpClient(base_client)
 
     jev = OpenRouterJevProvider.from_config(OpenRouterConfig())
     router = JevToolRouter(jev, RoutingConfig())
