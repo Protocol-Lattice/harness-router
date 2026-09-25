@@ -28,6 +28,13 @@ from .models import (
     RoutingMode,
     ToolDescriptor,
 )
+from .mcts import (
+    MCTSConfig,
+    MCTSResult,
+    MCTSToolRouter,
+    SearchEnvironment,
+    SimulatedStep,
+)
 from .policy import DefaultExecutionPolicy
 from .provider import DecisionProvider, OpenRouterJevProvider
 from .router import JevToolRouter
@@ -46,6 +53,9 @@ __all__ = [
     "JevToolRouter",
     "LoopGuard",
     "MCPToolAdapter",
+    "MCTSConfig",
+    "MCTSResult",
+    "MCTSToolRouter",
     "OpenRouterConfig",
     "OpenRouterJevProvider",
     "PlannerFallback",
@@ -60,6 +70,8 @@ __all__ = [
     "RoutingLoopError",
     "RoutingMode",
     "RoutingSession",
+    "SearchEnvironment",
+    "SimulatedStep",
     "ToolAdapter",
     "ToolDescriptor",
     "ToolExecutor",

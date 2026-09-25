@@ -177,6 +177,39 @@ Keep these in the planner instead:
 - open-ended planning
 - interpreting ambiguous user intent that cannot be represented by the candidate tools
 
+## MCTS lookahead
+
+Use `MCTSToolRouter` only when the best immediate tool depends on likely downstream
+outcomes and the harness has a **side-effect-free simulator**.
+
+The simulator may predict state, reward, terminal status, and future tool availability. It
+must not execute real writes, shell commands, browser actions, network mutations, or other
+external side effects during search.
+
+Prefer the default bounded setup:
+
+```python
+MCTSConfig(
+    simulations=64,
+    max_depth=4,
+    max_policy_evaluations=1,
+)
+```
+
+When a `JevToolRouter` is supplied as `policy_router`, the default budget performs at
+most one policy-router evaluation at the first ambiguous node, normally the root. The rest
+of the tree search is local. Large registries may still trigger hierarchical routing inside
+that single router evaluation. Raising `max_policy_evaluations` can increase API/token
+cost and should be benchmarked.
+
+Do not invoke MCTS from the Codex routing helper merely to add more reasoning steps. In
+unmodified Codex, use it only through a runtime integration that can perform simulations
+without extra main-model turns.
+
+After search, execute only the selected first tool through the normal policy/approval
+boundary. `principal_variation` is a predicted route, not authorization to execute the
+whole sequence.
+
 ## Hierarchical routing
 
 Do not manually flatten very large tool registries. `JevToolRouter` automatically uses category-first routing when the number of tools exceeds `hierarchical_threshold` (default: 24). Smaller registries stay flat to avoid a second Jev request.
@@ -223,5 +256,6 @@ Before finishing an integration:
 3. Confirm tool choice and tool argument generation are separate.
 4. Confirm policy/approval remains separate from Jev confidence.
 5. Confirm planner fallback still works.
-6. Run the project's tests.
-7. Do not claim latency or cost improvements without measurements.
+6. If MCTS is enabled, confirm simulation is side-effect free and policy evaluations are bounded.
+7. Run the project's tests.
+8. Do not claim latency or cost improvements without measurements.
