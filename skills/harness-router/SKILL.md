@@ -1,6 +1,6 @@
 ---
 name: harness-router
-description: Use Protocol Lattice harness-router with OpenRouter Jev to choose the next tool or action in an agentic harness. Use when working on coding agents, browser/computer-use agents, MCP/UTCP harnesses, or when the user asks to route tool selection through Jev instead of the main planner.
+description: Use Protocol Lattice harness-router with OpenRouter Jev to choose the next tool or action in an agentic harness. Use when working on coding agents, browser/computer-use agents, MCP harnesses, or generic tool registries, or when the user asks to route tool selection through Jev instead of the main planner.
 ---
 
 # Harness Router
@@ -67,7 +67,6 @@ When routing an actual harness step:
 2. Convert currently available tools to `ToolDescriptor`.
 3. Prefer existing adapters:
    - `MCPToolAdapter` for MCP tool definitions
-   - `UTCPToolAdapter` for UTCP-style definitions
    - `GenericToolAdapter` for generic dictionaries
 4. Assign conservative risk levels. If unsure, do not mark a mutating tool as low risk.
 5. Call `JevToolRouter.route(...)`.
@@ -142,7 +141,7 @@ Good Jev decisions:
 - read vs search vs run tests
 - browser click vs navigation vs extraction
 - inspect vs mutate vs verify
-- which MCP or UTCP tool should run next
+- which MCP or generic tool should run next
 - which small fixed action should be selected from a known set
 
 Keep these in the planner instead:

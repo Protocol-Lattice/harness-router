@@ -3,6 +3,7 @@ import pytest
 from harness_router import (
     ChoiceDecision,
     GenericToolAdapter,
+    MCPToolAdapter,
     HarnessState,
     JevToolRouter,
     RiskLevel,
@@ -28,6 +29,24 @@ def test_generic_adapter_infers_category_and_risk() -> None:
     assert tool.category == "inspect"
     assert tool.risk is RiskLevel.LOW
     assert tool.schema["type"] == "object"
+
+
+def test_mcp_adapter_normalizes_standard_input_schema() -> None:
+    tool = MCPToolAdapter().normalize(
+        {
+            "name": "search_code",
+            "description": "Search repository source code",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+        }
+    )
+    assert tool.name == "search_code"
+    assert tool.category == "inspect"
+    assert tool.risk is RiskLevel.LOW
+    assert tool.schema["required"] == ["query"]
 
 
 @pytest.mark.asyncio

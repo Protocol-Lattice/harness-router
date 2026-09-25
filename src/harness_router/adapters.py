@@ -70,20 +70,6 @@ class MCPToolAdapter(GenericToolAdapter):
     """Normalize standard MCP tool definitions without depending on an MCP SDK."""
 
 
-class UTCPToolAdapter(GenericToolAdapter):
-    """Normalize UTCP-like tool definitions without depending on a UTCP SDK."""
-
-    def normalize(self, tool: Mapping[str, Any]) -> ToolDescriptor:
-        normalized = dict(tool)
-        if "schema" not in normalized:
-            for key in ("input_schema", "inputSchema", "inputs", "args"):
-                value = normalized.get(key)
-                if isinstance(value, Mapping):
-                    normalized["schema"] = value
-                    break
-        return super().normalize(normalized)
-
-
 def normalize_tools(
     tools: Iterable[Mapping[str, Any]],
     *,
