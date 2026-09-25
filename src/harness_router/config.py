@@ -16,10 +16,13 @@ class RoutingConfig:
     max_same_action_repeats: int = 2
     max_route_steps: int = 50
     max_consecutive_fallbacks: int = 2
-    description_limit: int = 160
-    history_limit: int = 3
-    state_field_limit: int = 800
-    constraint_limit: int = 4
+    description_limit: int = 96
+    history_limit: int = 2
+    state_field_limit: int = 512
+    constraint_limit: int = 2
+    route_cache_size: int = 128
+    adaptive_hierarchy: bool = True
+    hierarchical_min_savings_ratio: float = 0.15
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.fallback_threshold <= 1.0:
@@ -46,6 +49,12 @@ class RoutingConfig:
             raise RouterConfigurationError("state_field_limit must be >= 64")
         if self.constraint_limit < 0:
             raise RouterConfigurationError("constraint_limit must be >= 0")
+        if self.route_cache_size < 0:
+            raise RouterConfigurationError("route_cache_size must be >= 0")
+        if not 0.0 <= self.hierarchical_min_savings_ratio < 1.0:
+            raise RouterConfigurationError(
+                "hierarchical_min_savings_ratio must be >= 0 and < 1"
+            )
 
 
 @dataclass(frozen=True, slots=True)
