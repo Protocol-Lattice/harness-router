@@ -1,8 +1,6 @@
 # harness-router
 
-[![PyPI](https://img.shields.io/pypi/v/harness-router.svg)](https://pypi.org/project/harness-router/)
 [![Python](https://img.shields.io/pypi/pyversions/harness-router.svg)](https://pypi.org/project/harness-router/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 **Framework-agnostic Jev tool routing for agentic harnesses.**
 
