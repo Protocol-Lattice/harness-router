@@ -67,6 +67,19 @@ This result should not be generalized beyond the tested integration.
 - Setup, smoke tests, dependency work, supervisor verification, and report-generation tokens were excluded equally from both arms.
 - No pricing assumptions or cost-savings claims are made.
 
+## Changes made in response
+
+The repository now targets the overhead exposed by this benchmark:
+
+- Codex skill routing is selective rather than per-step, with a maximum of two helper calls per task.
+- The skill stops using the helper after the first fallback or explicit planner override.
+- Helper output is compact by default and omits probability maps unless `--verbose` is requested.
+- Jev state/tool descriptions are truncated more aggressively.
+- Flat routing is used through 24 tools to avoid a second Jev request for medium-size registries.
+- `RoutingSession` opens a fallback circuit after repeated fallbacks so custom runtimes stop paying for a route that is not helping.
+
+These are benchmark-driven design changes, **not new benchmark results**. Re-run the controlled benchmark before claiming a measured latency or token reduction.
+
 ## Takeaway
 
 The benchmark is a reminder to measure the **complete harness loop**, not just the selector.

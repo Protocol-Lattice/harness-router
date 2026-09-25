@@ -54,6 +54,29 @@ Interpret decisions as follows:
 
 Confidence is not authorization. Always preserve the harness's execution policy and approval rules.
 
+## Cost-aware routing in Codex
+
+When this skill runs inside **unmodified Codex**, the routing helper itself creates an extra
+tool turn, and Codex needs another model turn to generate tool arguments. Do **not** route
+every step.
+
+Use the helper only when all of these are true:
+
+- there are at least 3 genuinely plausible next tools, or a large registry makes selection costly
+- the choice is a closed discrete decision rather than open-ended reasoning
+- the next tool is not already obvious from the latest observation
+- the router is likely to avoid at least one exploratory planner/tool turn
+
+For coding tasks, prefer normal Codex tool calling for obvious linear work such as
+`read -> edit -> test`. Never call the helper just to confirm a tool Codex has already chosen.
+
+Use a routing budget of **at most 2 helper calls per user task**. After the first router
+fallback or explicit planner override, stop using the helper for the rest of that task and
+continue with normal Codex reasoning. Do not retry the same state through Jev.
+
+The helper prints compact JSON by default. Use `--verbose` only for diagnostics because
+the probability map becomes additional context for the next model turn.
+
 ## Workflow
 
 When routing an actual harness step:
@@ -69,8 +92,8 @@ When routing an actual harness step:
    - `MCPToolAdapter` for MCP tool definitions
    - `GenericToolAdapter` for generic dictionaries
 4. Assign conservative risk levels. If unsure, do not mark a mutating tool as low risk.
-5. Call `JevToolRouter.route(...)`.
-6. If `decision.fallback` is true, resume normal Codex/planner reasoning.
+5. Call `JevToolRouter.route(...)` only when the cost-aware conditions above are met.
+6. If `decision.fallback` is true, resume normal Codex/planner reasoning and do not route again for this task.
 7. If a tool is selected, validate that:
    - the tool still exists
    - required arguments can be produced
@@ -94,7 +117,8 @@ python skills/harness-router/scripts/route.py \
   ]'
 ```
 
-The script prints a JSON object containing the selected tool, confidence, probabilities, category, and fallback status.
+The script prints compact JSON containing the selected tool, confidence, category, and fallback status.
+Pass `--verbose` only when you need the full probability map.
 
 Do not follow a selected mutating/high-risk action merely because the script returned high confidence. Apply normal Codex/harness permissions and user approval requirements.
 
@@ -155,7 +179,7 @@ Keep these in the planner instead:
 
 ## Hierarchical routing
 
-Do not manually flatten very large tool registries. `JevToolRouter` automatically uses category-first routing when the number of tools exceeds `hierarchical_threshold`.
+Do not manually flatten very large tool registries. `JevToolRouter` automatically uses category-first routing when the number of tools exceeds `hierarchical_threshold` (default: 24). Smaller registries stay flat to avoid a second Jev request.
 
 Give tools useful categories where possible:
 

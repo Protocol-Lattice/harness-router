@@ -12,10 +12,14 @@ class RoutingConfig:
     mode: RoutingMode = RoutingMode.HYBRID
     direct_execution_threshold: float = 0.85
     fallback_threshold: float = 0.60
-    hierarchical_threshold: int = 8
+    hierarchical_threshold: int = 24
     max_same_action_repeats: int = 2
     max_route_steps: int = 50
-    description_limit: int = 320
+    max_consecutive_fallbacks: int = 2
+    description_limit: int = 160
+    history_limit: int = 3
+    state_field_limit: int = 800
+    constraint_limit: int = 4
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.fallback_threshold <= 1.0:
@@ -32,8 +36,16 @@ class RoutingConfig:
             raise RouterConfigurationError("max_same_action_repeats must be >= 1")
         if self.max_route_steps < 1:
             raise RouterConfigurationError("max_route_steps must be >= 1")
+        if self.max_consecutive_fallbacks < 1:
+            raise RouterConfigurationError("max_consecutive_fallbacks must be >= 1")
         if self.description_limit < 32:
             raise RouterConfigurationError("description_limit must be >= 32")
+        if self.history_limit < 1:
+            raise RouterConfigurationError("history_limit must be >= 1")
+        if self.state_field_limit < 64:
+            raise RouterConfigurationError("state_field_limit must be >= 64")
+        if self.constraint_limit < 0:
+            raise RouterConfigurationError("constraint_limit must be >= 0")
 
 
 @dataclass(frozen=True, slots=True)

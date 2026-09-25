@@ -82,13 +82,13 @@ class JevToolRouter:
             category: self._category_description(category, members)
             for category, members in sorted(groups.items())
         }
-        category_criteria[_FALLBACK] = "No available category is appropriate; use the reasoning planner."
+        category_criteria[_FALLBACK] = "None fit; use planner."
 
         category_choice = await self._provider.choose(
             state=self._state_text(state),
             instructions=(
-                "Choose the single tool category that best advances the user's goal from the current "
-                "observation. Prefer the smallest useful next action. Choose __fallback__ when none fit."
+                "Pick the best next tool category. Prefer the smallest useful action. "
+                "Use __fallback__ if none fit."
             ),
             criteria=category_criteria,
         )
@@ -131,14 +131,13 @@ class JevToolRouter:
     ) -> RouteDecision:
         assert self._provider is not None
         criteria = {tool.name: self._tool_description(tool) for tool in tools}
-        criteria[_FALLBACK] = "No available tool is appropriate; use the reasoning planner instead."
+        criteria[_FALLBACK] = "None fit; use planner."
 
         choice = await self._provider.choose(
             state=self._state_text(state),
             instructions=(
-                "Choose the single best next tool for the current goal and observation. Choose only a tool "
-                "that can make concrete progress. Do not infer permission for risky actions. Choose "
-                "__fallback__ when reasoning or a different capability is required."
+                "Pick the best next tool for this state. Do not treat risk as permission. "
+                "Use __fallback__ if none fit or deeper reasoning is needed."
             ),
             criteria=criteria,
         )
@@ -184,17 +183,36 @@ class JevToolRouter:
         return decision
 
     def _state_text(self, state: HarnessState) -> str:
-        return json.dumps(state.compact(), ensure_ascii=False, separators=(",", ":"), default=str)
+        payload = state.compact(history_limit=self._config.history_limit)
+        payload["goal"] = self._clip_text(payload["goal"], self._config.state_field_limit)
+        payload["observation"] = self._clip_text(
+            payload["observation"],
+            self._config.state_field_limit,
+        )
+        payload["constraints"] = [
+            self._clip_text(value, self._config.state_field_limit)
+            for value in payload["constraints"][: self._config.constraint_limit]
+        ]
+        outcome_limit = max(64, self._config.state_field_limit // 2)
+        for action in payload["recent_actions"]:
+            action["outcome"] = self._clip_text(action["outcome"], outcome_limit)
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
 
     def _tool_description(self, tool: ToolDescriptor) -> str:
         description = " ".join(tool.description.split())[: self._config.description_limit]
         category = tool.category or infer_category(tool.name, tool.description)
-        return f"Category: {category}. Risk: {tool.risk.value}. Capability: {description}"
+        return f"{category};risk={tool.risk.value};{description}"
 
     def _category_description(self, category: str, tools: Sequence[ToolDescriptor]) -> str:
-        names = ", ".join(tool.name for tool in tools[:8])
-        suffix = "..." if len(tools) > 8 else ""
-        return f"Use this category for {category} actions. Available tools: {names}{suffix}"
+        names = ",".join(tool.name for tool in tools[:6])
+        suffix = ",..." if len(tools) > 6 else ""
+        return f"{category}:{names}{suffix}"
+
+    @staticmethod
+    def _clip_text(value: str | None, limit: int) -> str | None:
+        if value is None or len(value) <= limit:
+            return value
+        return value[: limit - 1] + "…"
 
     @staticmethod
     def _validate_tools(tools: Sequence[ToolDescriptor]) -> None:

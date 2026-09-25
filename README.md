@@ -4,7 +4,7 @@
 
 <code>harness-router</code> uses [TypeSafeAI Jev](https://www.typesafe.ai/) through the [OpenRouter Decisions API](https://openrouter.ai/) as a fast **System-1 tool-selection layer**.
 
-Instead of asking a large reasoning model to decide which tool to call on every step, give Jev a compact harness state and a fixed set of candidate tools. Jev chooses the next action; your main planner remains responsible for deep reasoning, free-form argument generation, code generation, and ambiguous tasks.
+At decision points where several tools are genuinely plausible, give Jev a compact harness state and a fixed set of candidate tools. Jev chooses the next action; your main planner remains responsible for deep reasoning, free-form argument generation, code generation, obvious linear steps, and ambiguous tasks.
 
 ~~~text
 User goal + observation
@@ -118,22 +118,10 @@ har route \
 Example response:
 
 ~~~json
-{
-  "category": "inspect",
-  "confidence": 0.93,
-  "fallback": false,
-  "fallback_reason": null,
-  "probabilities": {
-    "__fallback__": 0.01,
-    "read_file": 0.93,
-    "search_code": 0.05,
-    "write_file": 0.01
-  },
-  "tool": "read_file"
-}
+{"category":"inspect","confidence":0.93,"fallback":false,"fallback_reason":null,"tool":"read_file"}
 ~~~
 
-The exact probabilities depend on the current state and Jev response.
+Pass `--verbose` when you need the full probability map for diagnostics.
 
 ## Python quick start
 
@@ -276,7 +264,7 @@ The router immediately returns a planner fallback decision. No Jev provider is r
 
 Large flat tool lists are harder to route efficiently.
 
-When the number of available tools exceeds <code>hierarchical_threshold</code> (default: <code>8</code>), <code>JevToolRouter</code> automatically performs category-first routing:
+When the number of available tools exceeds <code>hierarchical_threshold</code> (default: <code>24</code>), <code>JevToolRouter</code> automatically performs category-first routing. Smaller registries stay flat so one Jev request is enough:
 
 ~~~text
                  +--> inspect --> read_file / search_code / list_files
@@ -386,17 +374,17 @@ Keep these tasks in the main reasoning model:
 - interpreting ambiguous intent
 - deciding user authorization
 
-A typical agent loop looks like this:
+A cost-aware agent loop looks like this:
 
 ~~~text
 1. Main planner creates/updates the goal
 2. Harness builds compact state
-3. harness-router chooses the next tool
-4. Main planner generates required arguments
-5. Execution policy checks permission
-6. Harness executes the tool
-7. Result becomes the next observation
-8. Repeat
+3. If tool choice is genuinely ambiguous, harness-router chooses the next tool
+4. Otherwise, use the planner's obvious next tool directly
+5. Main planner generates required arguments
+6. Execution policy checks permission
+7. Harness executes the tool
+8. Result becomes the next observation
 ~~~
 
 ## Stateful routing and loop detection
@@ -407,6 +395,7 @@ For long-running agent loops, <code>RoutingSession</code> adds:
 
 - route-step counting
 - configurable maximum route steps
+- repeated-fallback circuit breaking
 - repeated-action detection
 - A/B loop detection
 
@@ -428,7 +417,7 @@ if loop_detected:
     ...
 ~~~
 
-The session reports loops; your harness decides what to do next.
+The session reports loops and opens the fallback circuit after repeated planner fallbacks. Call `reset_fallbacks()` after the planner materially changes the routing state.
 
 ## Custom provider
 
@@ -458,7 +447,9 @@ skills/harness-router/SKILL.md
 
 For Codex, copy the <code>skills/harness-router</code> directory into a location Codex scans for skills, or expose that directory through your existing Codex skill configuration.
 
-The skill tells Codex to use Jev for **tool selection**, while retaining Codex for reasoning and free-form argument generation.
+The skill tells Codex to use Jev selectively for **ambiguous tool selection**, while retaining Codex for reasoning and free-form argument generation.
+
+For unmodified Codex, the helper adds an extra tool/model turn. To keep total tokens down, the skill now uses a maximum of two routing-helper calls per task, skips obvious linear tool steps, and stops routing after the first fallback or planner override. The helper emits compact JSON by default; use `--verbose` only for diagnostics.
 
 It also contains a direct routing helper:
 
@@ -482,10 +473,14 @@ RoutingConfig(
     mode=RoutingMode.HYBRID,
     direct_execution_threshold=0.85,
     fallback_threshold=0.60,
-    hierarchical_threshold=8,
+    hierarchical_threshold=24,
     max_same_action_repeats=2,
     max_route_steps=50,
-    description_limit=320,
+    max_consecutive_fallbacks=2,
+    description_limit=160,
+    history_limit=3,
+    state_field_limit=800,
+    constraint_limit=4,
 )
 ~~~
 
@@ -516,6 +511,7 @@ Common fallback reasons include:
 - <code>provider_error</code>
 - <code>router_error</code>
 - <code>max_route_steps</code>
+- <code>fallback_circuit_open</code>
 
 In <code>jev_only</code> mode, provider/router failures propagate so the harness can handle them explicitly.
 

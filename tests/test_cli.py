@@ -14,6 +14,8 @@ def test_cli_parser_supports_route() -> None:
     )
     assert args.command == "route"
     assert args.goal == "Fix tests"
+    assert args.hierarchical_threshold == 24
+    assert args.verbose is False
 
 
 def test_cli_without_subcommand_is_valid() -> None:
