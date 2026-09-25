@@ -183,23 +183,15 @@ class Planner:
         state: AgentState,
         tools: Sequence[ToolDescriptor],
     ) -> tuple[str, dict[str, Any]]:
-        registry = [_tool_payload(tool) for tool in tools]
         prompt = (
-            "Choose exactly one next coding-agent tool and generate its arguments. "
-            "Inspect evidence before editing. Prefer a minimal edit. Run tests after mutation. "
-            "Do not finish before tests pass. Return JSON only as "
-            '{"tool":"name","arguments":{...}}.\n\n'
+            "Choose exactly one next coding-agent tool. "
+            "Inspect evidence before editing, prefer a minimal edit, run tests after mutation, "
+            "and do not finish before tests pass. Use one of the provided tools.\n\n"
             f"GOAL:\n{state.goal}\n\n"
             f"LATEST OBSERVATION:\n{state.observation}\n\n"
-            f"RECENT ACTIONS:\n{_transcript(state.transcript)}\n\n"
-            f"AVAILABLE TOOLS:\n{json.dumps(registry, separators=(',', ':'))}"
+            f"RECENT ACTIONS:\n{_transcript(state.transcript)}"
         )
-        value = await self._call_json(prompt)
-        action = _normalize_planner_action(value)
-        if action is None:
-            rendered = json.dumps(value, ensure_ascii=False, default=str)[:1000]
-            raise RuntimeError(f"planner did not return a tool action: {rendered}")
-        return action
+        return await self._call_tool(prompt, tools=tools)
 
     async def arguments_for(
         self,
@@ -209,41 +201,57 @@ class Planner:
     ) -> dict[str, Any]:
         prompt = (
             "A fast runtime router already selected the next coding-agent tool. "
-            "Generate arguments only for that selected tool. Do not reconsider tool choice. "
-            "For source edits, make the smallest correct change. Return JSON only as "
-            '{"arguments":{...}}.\n\n'
+            "Call exactly that tool with the best arguments. Do not reconsider tool choice. "
+            "For source edits, make the smallest correct change.\n\n"
             f"GOAL:\n{state.goal}\n\n"
             f"LATEST OBSERVATION:\n{state.observation}\n\n"
-            f"RECENT ACTIONS:\n{_transcript(state.transcript)}\n\n"
-            f"SELECTED TOOL:\n{json.dumps(_tool_payload(tool), separators=(',', ':'))}"
+            f"RECENT ACTIONS:\n{_transcript(state.transcript)}"
         )
-        value = await self._call_json(prompt)
-        arguments = value.get("arguments", {})
-        if not isinstance(arguments, dict):
-            raise RuntimeError("planner arguments must be an object")
+        selected, arguments = await self._call_tool(
+            prompt,
+            tools=[tool],
+            forced_tool=tool.name,
+        )
+        if selected != tool.name:
+            raise RuntimeError(
+                f"planner called {selected!r} after router selected {tool.name!r}"
+            )
         return arguments
 
-    async def _call_json(self, prompt: str) -> dict[str, Any]:
+    async def _call_tool(
+        self,
+        prompt: str,
+        *,
+        tools: Sequence[ToolDescriptor],
+        forced_tool: str | None = None,
+    ) -> tuple[str, dict[str, Any]]:
         self._stats.planner_calls += 1
-        response = await self._client.post(
-            PLANNER_URL,
-            json={
-                "model": self._model,
-                "temperature": 0,
-                "max_tokens": 4000,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a careful coding agent. Keep reasoning concise. "
-                            "Never invent file contents you have not inspected. "
-                            "Return machine-readable output only."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-            },
-        )
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "temperature": 0,
+            "max_tokens": 4000,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a careful coding agent. Keep reasoning concise. "
+                        "Never invent file contents you have not inspected. "
+                        "Use the provided tools instead of describing a tool call in prose."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "tools": [_native_tool_payload(tool) for tool in tools],
+        }
+        if forced_tool is None:
+            payload["tool_choice"] = "required"
+        else:
+            payload["tool_choice"] = {
+                "type": "function",
+                "function": {"name": forced_tool},
+            }
+
+        response = await self._client.post(PLANNER_URL, json=payload)
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -265,15 +273,19 @@ class Planner:
         message = data["choices"][0]["message"]
         native_action = _parse_native_tool_calls(message.get("tool_calls"))
         if native_action is not None:
-            return native_action
+            action = _normalize_planner_action(native_action)
+            if action is not None:
+                return action
 
         content = message.get("content")
-        if not isinstance(content, str):
-            raise RuntimeError(
-                f"planner returned neither text nor tool_calls: "
-                f"{json.dumps(message, ensure_ascii=False, default=str)[:1000]}"
-            )
-        return _parse_model_object(content)
+        if isinstance(content, str) and content.strip():
+            value = _parse_model_object(content)
+            action = _normalize_planner_action(value)
+            if action is not None:
+                return action
+
+        rendered = json.dumps(message, ensure_ascii=False, default=str)[:2000]
+        raise RuntimeError(f"planner did not return a usable tool call: {rendered}")
 
 
 class Workspace:
@@ -564,6 +576,17 @@ def _tool_payload(tool: ToolDescriptor) -> dict[str, Any]:
         "category": tool.category,
         "risk": tool.risk.value,
         "schema": tool.schema,
+    }
+
+
+def _native_tool_payload(tool: ToolDescriptor) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": dict(tool.schema),
+        },
     }
 
 
