@@ -543,6 +543,39 @@ python skills/harness-router/scripts/route.py \
   ]'
 ~~~
 
+## OpenRouter coding-agent example
+
+A runnable local coding-agent example is available at:
+
+~~~text
+examples/openrouter_coding_agent.py
+~~~
+
+It uses an OpenRouter chat model for planning, argument generation, and code generation, while
+`harness-router` uses Jev to select the next tool from a compact state. On a direct Jev route,
+the planner receives only the selected tool schema instead of the whole tool registry.
+
+~~~bash
+export OPENROUTER_API_KEY="your-key"
+
+python examples/openrouter_coding_agent.py \
+  "Add a regression test for the router fallback path" \
+  --workspace .
+~~~
+
+Writes are dry-run by default. Pass `--apply` to allow `write_file` to modify the workspace:
+
+~~~bash
+python examples/openrouter_coding_agent.py \
+  "Fix the failing parser test and run the test suite" \
+  --workspace . \
+  --apply
+~~~
+
+The planner model defaults to `openrouter/free`. Override it with `--model` or
+`OPENROUTER_MODEL`. The example intentionally exposes no arbitrary shell tool; verification is
+limited to `pytest -q`.
+
 ## Configuration
 
 ### RoutingConfig
