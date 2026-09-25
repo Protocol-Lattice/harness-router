@@ -340,9 +340,14 @@ examples/mcts_coding_agent.py
 
 ## Hierarchical routing
 
-Large flat tool lists are harder to route efficiently.
+Large flat tool lists are harder to route efficiently, but category-first routing costs an
+extra network round trip and repeats the state.
 
-When the number of available tools exceeds <code>hierarchical_threshold</code> (default: <code>24</code>), <code>JevToolRouter</code> automatically performs category-first routing. Smaller registries stay flat so one Jev request is enough:
+When the number of available tools exceeds <code>hierarchical_threshold</code> (default:
+<code>24</code>), <code>JevToolRouter</code> now estimates the request size of flat routing
+versus category-first routing. It only pays for the second Jev request when the hierarchical
+shape is estimated to save at least <code>hierarchical_min_savings_ratio</code> (default:
+<code>15%</code>) of the routing input. Otherwise it stays flat and completes in one request:
 
 ~~~text
                  +--> inspect --> read_file / search_code / list_files
@@ -352,6 +357,17 @@ Harness state -->+--> mutate  --> write_file / patch_file
 ~~~
 
 First Jev selects a category, then it selects a tool inside that category.
+
+Set <code>adaptive_hierarchy=False</code> to force the previous threshold-only behavior.
+
+Repeated calls with the exact same compact state and tool registry are served from a bounded
+in-process LRU cache (default: <code>128</code> routes). Set <code>route_cache_size=0</code>
+to disable it.
+
+The OpenRouter provider also sends router-generated JSON state as a native JSON object rather
+than a JSON-escaped string. OpenRouter's Decisions API supports structured state directly,
+which avoids unnecessary wire bytes while preserving the provider-agnostic string protocol
+used by custom providers.
 
 You can provide categories explicitly or let the built-in adapter infer common categories such as:
 
