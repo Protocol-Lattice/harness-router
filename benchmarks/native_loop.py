@@ -36,7 +36,7 @@ class Scenario:
     files: Mapping[str, str]
     failure: str
     expected_path: str
-    expected_fragment: str
+    accepted_fragments: tuple[str, ...]
 
 
 SCENARIOS: tuple[Scenario, ...] = (
@@ -56,7 +56,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         },
         failure="test_percentage_discount: expected 75.0, got -2400.0",
         expected_path="src/pricing.py",
-        expected_fragment="percent / 100",
+        accepted_fragments=("percent / 100", "percent/100", "percent * 0.01", "percent*0.01"),
     ),
     Scenario(
         name="slug_separator",
@@ -74,7 +74,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         },
         failure="test_slug_separator: expected 'hello-router', got 'hello_router'",
         expected_path="src/slug.py",
-        expected_fragment="replace(' ', '-')",
+        accepted_fragments=("replace(' ', '-')", 'replace(" ", "-")'),
     ),
     Scenario(
         name="retry_limit",
@@ -98,7 +98,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         },
         failure="test_retry_limit: expected 3 calls, observed 4",
         expected_path="src/retry.py",
-        expected_fragment="range(max_attempts)",
+        accepted_fragments=("range(max_attempts)",),
     ),
 )
 
@@ -386,7 +386,9 @@ class MiniRepo:
 
         if tool == "run_tests":
             content = self.files.get(self.scenario.expected_path, "")
-            self.tests_passed = self.scenario.expected_fragment in content
+            self.tests_passed = any(
+                fragment in content for fragment in self.scenario.accepted_fragments
+            )
             if self.tests_passed:
                 return "1 passed", False
             return self.scenario.failure, False
@@ -630,6 +632,7 @@ def markdown_report(
         ("Planner output tokens", "planner_output_tokens_mean", False),
         ("Planner total tokens", "planner_total_tokens_mean", False),
         ("Jev requests", "router_requests_mean", False),
+        ("Jev routing ms", "router_elapsed_ms_mean", False),
         ("Jev fallbacks", "router_fallbacks_mean", False),
         ("Tool calls", "tool_calls_mean", False),
         ("Elapsed seconds", "elapsed_seconds_mean", False),
@@ -685,8 +688,9 @@ async def async_main(args: argparse.Namespace) -> int:
         batch = list(SCENARIOS)
         rng.shuffle(batch)
         for scenario in batch:
-            schedule.append(("baseline", scenario))
-            schedule.append(("native", scenario))
+            arms = ["baseline", "native"]
+            rng.shuffle(arms)
+            schedule.extend((arm, scenario) for arm in arms)
 
     results: list[RunResult] = []
     for index, (arm, scenario) in enumerate(schedule, start=1):
