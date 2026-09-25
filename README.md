@@ -426,6 +426,24 @@ UTCP call_tool(...)
 ~~~
 
 
+
+### Example coding-agent prompt: find and fix bugs
+
+A ready-to-use prompt for Codex or another coding agent is included at:
+
+~~~text
+examples/prompts/find_and_fix_bugs.md
+~~~
+
+It instructs the agent to use the UTCP filesystem/Bash tools with Jev-based tool routing, reproduce concrete bugs, apply minimal fixes, and verify them with tests.
+
+Example:
+
+~~~text
+Use examples/prompts/find_and_fix_bugs.md as your task instructions.
+Inspect this repository, find a real bug, fix it, and verify the fix.
+~~~
+
 ## Safety and execution policy
 
 Routing and execution are deliberately separate.
