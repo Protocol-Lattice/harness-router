@@ -83,58 +83,121 @@ class Planner:
         state: HarnessState,
         tool: ToolDescriptor,
     ) -> dict[str, Any]:
-        return await self._json(
-            "The tool is already selected. Return only a JSON object containing arguments "
-            "for that tool. Do not choose another tool.",
+        tool_name, arguments = await self._tool_call(
+            "The routing layer already selected the tool. Call exactly that function with "
+            "the best arguments for the current coding task.",
             {
                 "goal": state.goal,
                 "observation": state.observation,
-                "tool": tool.name,
-                "description": tool.description,
-                "schema": SCHEMAS[tool.name],
+                "selected_tool": tool.name,
             },
+            [tool],
+            forced_tool=tool.name,
         )
+        if tool_name != tool.name:
+            raise RuntimeError(
+                f"planner called {tool_name!r}, expected selected tool {tool.name!r}"
+            )
+        return arguments
 
     async def fallback(self, state: HarnessState) -> tuple[str, dict[str, Any]]:
-        value = await self._json(
-            "Choose one tool and generate its arguments. Return only "
-            '{"tool":"name","arguments":{...}}.',
+        return await self._tool_call(
+            "The router requested planner fallback. Choose exactly one function that best "
+            "advances the coding task and call it with valid arguments.",
             {
                 "goal": state.goal,
                 "observation": state.observation,
-                "tools": [
-                    {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "schema": SCHEMAS[tool.name],
-                    }
-                    for tool in TOOLS
-                ],
             },
+            TOOLS,
         )
-        tool = value.get("tool")
-        arguments = value.get("arguments", {})
-        if not isinstance(tool, str) or not isinstance(arguments, dict):
-            raise RuntimeError("planner returned an invalid action")
-        return tool, arguments
 
-    async def _json(self, system: str, payload: dict[str, Any]) -> dict[str, Any]:
-        response = await self.client.post(
-            CHAT_URL,
-            json={
-                "model": self.model,
-                "temperature": 0,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-                ],
-            },
-        )
-        response.raise_for_status()
-        raw = response.json()["choices"][0]["message"]["content"]
-        if not isinstance(raw, str):
-            raise RuntimeError("planner returned non-text content")
-        return parse_json(raw)
+    async def _tool_call(
+        self,
+        system: str,
+        payload: dict[str, Any],
+        tools: list[ToolDescriptor],
+        *,
+        forced_tool: str | None = None,
+    ) -> tuple[str, dict[str, Any]]:
+        api_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": SCHEMAS[tool.name],
+                },
+            }
+            for tool in tools
+        ]
+        tool_choice: str | dict[str, Any]
+        if forced_tool is None:
+            tool_choice = "required"
+        else:
+            tool_choice = {
+                "type": "function",
+                "function": {"name": forced_tool},
+            }
+
+        last_error = "planner returned no tool call"
+        for attempt in range(2):
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            ]
+            if attempt:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Your previous response did not contain a valid function call. "
+                        "Call exactly one of the provided functions now.",
+                    }
+                )
+
+            response = await self.client.post(
+                CHAT_URL,
+                json={
+                    "model": self.model,
+                    "temperature": 0,
+                    "messages": messages,
+                    "tools": api_tools,
+                    "tool_choice": tool_choice,
+                    "provider": {"require_parameters": True},
+                },
+            )
+            response.raise_for_status()
+            message = response.json()["choices"][0]["message"]
+            tool_calls = message.get("tool_calls") or []
+            if not tool_calls:
+                content = message.get("content")
+                last_error = f"planner returned no tool call: {str(content)[:300]}"
+                continue
+
+            function = tool_calls[0].get("function") or {}
+            name = function.get("name")
+            raw_arguments = function.get("arguments", {})
+            if not isinstance(name, str):
+                last_error = "planner tool call is missing function name"
+                continue
+
+            if isinstance(raw_arguments, dict):
+                arguments = raw_arguments
+            elif isinstance(raw_arguments, str):
+                try:
+                    arguments = parse_json(raw_arguments)
+                except RuntimeError as exc:
+                    last_error = str(exc)
+                    continue
+            else:
+                last_error = "planner returned invalid function arguments"
+                continue
+
+            if not isinstance(arguments, dict):
+                last_error = "planner returned non-object function arguments"
+                continue
+            return name, arguments
+
+        raise RuntimeError(last_error)
 
     async def aclose(self) -> None:
         await self.client.aclose()
