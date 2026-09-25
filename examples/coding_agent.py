@@ -4,6 +4,7 @@ import argparse
 import ast
 import asyncio
 import html
+import importlib.util
 import json
 import math
 import os
@@ -35,6 +36,7 @@ from harness_router import (
 PLANNER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_ROUTER_CALLS = 2
 MAX_SUBAGENTS = 8
+MAX_PLANNER_ATTEMPTS = 2
 
 
 TOOLS: tuple[ToolDescriptor, ...] = (
@@ -561,7 +563,36 @@ class Planner:
         tools: Sequence[ToolDescriptor],
         forced_tool: str | None = None,
     ) -> tuple[str, dict[str, Any]]:
+        last_error: Exception | None = None
+        for attempt in range(MAX_PLANNER_ATTEMPTS):
+            try:
+                return await self._call_tool_once(
+                    prompt=prompt,
+                    tools=tools,
+                    forced_tool=forced_tool,
+                    retry=attempt > 0,
+                )
+            except (RuntimeError, httpx.HTTPError, KeyError, ValueError) as exc:
+                last_error = exc
+                if attempt + 1 >= MAX_PLANNER_ATTEMPTS:
+                    raise
+        raise RuntimeError(f"planner failed after retries: {last_error}")
+
+    async def _call_tool_once(
+        self,
+        *,
+        prompt: str,
+        tools: Sequence[ToolDescriptor],
+        forced_tool: str | None,
+        retry: bool,
+    ) -> tuple[str, dict[str, Any]]:
         self._stats.planner_calls += 1
+        if retry:
+            prompt += (
+                "\n\nRETRY: The previous response was unusable. Return exactly one valid "
+                "native tool call and no prose."
+            )
+
         payload: dict[str, Any] = {
             "model": self._model,
             "temperature": 0,
@@ -732,6 +763,12 @@ class Workspace:
             return f"wrote {path.relative_to(self.root)}"
 
         if tool == "run_tests":
+            if importlib.util.find_spec("pytest") is None:
+                state.tests_passed = False
+                return (
+                    "tests failed (pytest unavailable)\n"
+                    "Install development dependencies with: uv sync --extra dev"
+                )
             completed = subprocess.run(
                 [os.sys.executable, "-m", "pytest", "-q"],
                 cwd=self.root,
@@ -891,7 +928,18 @@ class CodingAgent:
             if state.finished:
                 break
 
-            tool_name, arguments = await self._next_action(state)
+            try:
+                tool_name, arguments = await self._next_action(state)
+            except Exception as exc:
+                state.router_enabled = False
+                state.observation = (
+                    f"error: action selection failed: {type(exc).__name__}: {exc}"
+                )
+                state.transcript.append(state.observation)
+                print(f"[step {step}] recovery")
+                print(_one_line(state.observation))
+                continue
+
             descriptor = _tool_by_name(tool_name)
             if descriptor is None:
                 state.observation = f"error: unknown tool selected: {tool_name}"
@@ -990,6 +1038,17 @@ class CodingAgent:
         return results
 
     async def _next_action(self, state: AgentState) -> tuple[str, dict[str, Any]]:
+        if state.history:
+            last = state.history[-1].tool
+            if (
+                last in {"replace_text", "write_file"}
+                and not state.observation.startswith("error:")
+            ):
+                return "run_tests", {}
+            if state.tests_passed and self.workspace.changed_files:
+                changed = ", ".join(sorted(self.workspace.changed_files))
+                return "finish", {"summary": f"Updated {changed} and tests passed."}
+
         if self._should_route(state):
             state.router_calls += 1
             self.stats.router_calls += 1
@@ -998,26 +1057,6 @@ class CodingAgent:
             self.stats.router_ms += (time.perf_counter() - started) * 1000
 
             if decision.fallback or decision.tool is None:
-                self.stats.router_fallbacks += 1
-                state.router_enabled = False
-                print(f"[router] fallback: {decision.fallback_reason}")
-            else:
-                descriptor = _tool_by_name(decision.tool)
-                if descriptor is not None:
-                    print(
-                        f"[router] {decision.tool} "
-                        f"(confidence={decision.confidence:.3f})"
-                    )
-                    if descriptor.schema.get("required") or descriptor.name == "finish":
-                        arguments = await self.planner.arguments_for(
-                            state=state,
-                            tool=descriptor,
-                        )
-                    else:
-                        arguments = {}
-                    return descriptor.name, arguments
-
-        if self.mcts is not None:
             tool_name, score = self.mcts.select(state)
             descriptor = _tool_by_name(tool_name)
             if descriptor is not None:
