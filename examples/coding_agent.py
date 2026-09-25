@@ -96,7 +96,7 @@ TOOLS: tuple[ToolDescriptor, ...] = (
     ),
     ToolDescriptor(
         name="write_file",
-        description="Create or completely replace one UTF-8 text file.",
+        description="Create a new UTF-8 text file. Prefer replace_text for edits to existing files; avoid full-file rewrites.",
         category="mutate",
         risk=RiskLevel.MEDIUM,
         schema={
