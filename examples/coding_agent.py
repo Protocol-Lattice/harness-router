@@ -1053,10 +1053,36 @@ class CodingAgent:
             state.router_calls += 1
             self.stats.router_calls += 1
             started = time.perf_counter()
-            decision = await self.router.route(_router_state(state), TOOLS)
-            self.stats.router_ms += (time.perf_counter() - started) * 1000
+            try:
+                decision = await self.router.route(_router_state(state), TOOLS)
+            except Exception as exc:
+                self.stats.router_ms += (time.perf_counter() - started) * 1000
+                self.stats.router_fallbacks += 1
+                state.router_enabled = False
+                print(f"[router] error, falling back to planner: {_one_line(str(exc))}")
+            else:
+                self.stats.router_ms += (time.perf_counter() - started) * 1000
+                if decision.fallback or decision.tool is None:
+                    self.stats.router_fallbacks += 1
+                    state.router_enabled = False
+                    print(f"[router] fallback: {decision.fallback_reason}")
+                else:
+                    descriptor = _tool_by_name(decision.tool)
+                    if descriptor is not None:
+                        print(
+                            f"[router] {decision.tool} "
+                            f"(confidence={decision.confidence:.3f})"
+                        )
+                        if descriptor.schema.get("required") or descriptor.name == "finish":
+                            arguments = await self.planner.arguments_for(
+                                state=state,
+                                tool=descriptor,
+                            )
+                        else:
+                            arguments = {}
+                        return descriptor.name, arguments
 
-            if decision.fallback or decision.tool is None:
+        if self.mcts is not None:
             tool_name, score = self.mcts.select(state)
             descriptor = _tool_by_name(tool_name)
             if descriptor is not None:
