@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -12,6 +13,7 @@ MODULE_PATH = Path(__file__).resolve().parents[1] / "examples" / "openrouter_fre
 SPEC = importlib.util.spec_from_file_location("openrouter_free_agent_example", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 AgentPlan = MODULE.AgentPlan
