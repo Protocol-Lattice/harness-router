@@ -557,6 +557,7 @@ class Planner:
         *,
         tools: Sequence[ToolDescriptor],
         forced_tool: str | None = None,
+        retry_on_malformed: bool = True,
     ) -> tuple[str, dict[str, Any]]:
         self._stats.planner_calls += 1
         payload: dict[str, Any] = {
@@ -604,11 +605,23 @@ class Planner:
         )
 
         message = data["choices"][0]["message"]
-        native_action = _parse_native_tool_calls(message.get("tool_calls"))
+        native_tool_calls = message.get("tool_calls")
+        native_action = _parse_native_tool_calls(native_tool_calls)
         if native_action is not None:
             action = _normalize_planner_action(native_action)
             if action is not None:
                 return action
+
+        if retry_on_malformed and native_tool_calls and forced_tool is None:
+            compact_tools = [tool for tool in tools if tool.name != "write_file"]
+            if compact_tools and len(compact_tools) != len(tools):
+                return await self._call_tool(
+                    prompt
+                    + "\n\nThe previous tool call was truncated. "
+                    "Use a compact edit instead of returning a complete existing file.",
+                    tools=compact_tools,
+                    retry_on_malformed=False,
+                )
 
         content = message.get("content")
         if isinstance(content, str) and content.strip():
@@ -967,8 +980,9 @@ class CodingAgent:
             else:
                 descriptor = _tool_by_name(decision.tool)
                 if descriptor is not None:
+                    descriptor = self._prefer_compact_edit(state, descriptor)
                     print(
-                        f"[router] {decision.tool} "
+                        f"[router] {descriptor.name} "
                         f"(confidence={decision.confidence:.3f})"
                     )
                     if descriptor.schema.get("required") or descriptor.name == "finish":
@@ -984,7 +998,8 @@ class CodingAgent:
             tool_name, score = self.mcts.select(state)
             descriptor = _tool_by_name(tool_name)
             if descriptor is not None:
-                print(f"[mcts] {tool_name} (mean_reward={score:.3f})")
+                descriptor = self._prefer_compact_edit(state, descriptor)
+                print(f"[mcts] {descriptor.name} (mean_reward={score:.3f})")
                 if descriptor.schema.get("required") or descriptor.name == "finish":
                     arguments = await self.planner.arguments_for(
                         state=state,
@@ -995,6 +1010,29 @@ class CodingAgent:
                 return descriptor.name, arguments
 
         return await self.planner.choose_tool(state=state, tools=TOOLS)
+
+    @staticmethod
+    def _prefer_compact_edit(
+        state: AgentState,
+        descriptor: ToolDescriptor,
+    ) -> ToolDescriptor:
+        if descriptor.name != "write_file":
+            return descriptor
+
+        goal = state.goal.lower()
+        existing_edit = any(
+            marker in goal
+            for marker in ("refactor", "fix", "improve", "update", "modify", "edit")
+        )
+        explicitly_new_file = any(
+            marker in goal
+            for marker in ("create a new file", "add a new file", "new file")
+        )
+        if existing_edit and not explicitly_new_file:
+            replacement = _tool_by_name("replace_text")
+            if replacement is not None:
+                return replacement
+        return descriptor
 
     @staticmethod
     def _should_route(state: AgentState) -> bool:
