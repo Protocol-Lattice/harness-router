@@ -165,7 +165,7 @@ async def main() -> None:
     router = JevToolRouter(jev, RoutingConfig())
 
     try:
-        discovered = await client.search_tools("", limit=0)
+        discovered = await client.search_tools("", limit=100)
         tools = normalize_utcp_tools(discovered)
 
         print("UTCP tools:")
