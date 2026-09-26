@@ -2,6 +2,7 @@ from examples.openrouter_free_agent_loop import (
     AgentState,
     Workspace,
     _goal_requires_mutation,
+    _history_text,
     _parse_planner_message,
     _target_path_from_goal,
 )
@@ -136,3 +137,35 @@ def test_safe_path_allows_absolute_path_only_inside_workspace(tmp_path) -> None:
     workspace = Workspace(tmp_path, apply=True, test_timeout=1.0)
 
     assert workspace._safe_path(str(target)) == target.resolve()
+
+
+def test_read_file_returns_full_large_file(tmp_path) -> None:
+    content = "x" * 250_000
+    target = tmp_path / "large.txt"
+    target.write_text(content, encoding="utf-8")
+    workspace = Workspace(tmp_path, apply=True, test_timeout=1.0)
+    state = AgentState(goal="read large.txt")
+
+    result = workspace.execute(
+        "read_file",
+        {"path": "large.txt"},
+        state,
+    )
+
+    assert result == content
+    assert len(result) == 250_000
+
+
+def test_history_text_keeps_full_outcome() -> None:
+    content = "a" * 20_000
+    history = [
+        __import__("harness_router").ActionSummary(
+            tool="read_file",
+            outcome=content,
+        )
+    ]
+
+    rendered = _history_text(history)
+
+    assert content in rendered
+    assert len(rendered) > 20_000
