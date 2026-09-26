@@ -1,4 +1,6 @@
 from examples.openrouter_free_agent_loop import (
+    AgentState,
+    Workspace,
     _goal_requires_mutation,
     _parse_planner_message,
     _target_path_from_goal,
@@ -74,3 +76,63 @@ def test_goal_requires_mutation_for_refactor() -> None:
 
 def test_goal_does_not_require_mutation_for_explanation() -> None:
     assert _goal_requires_mutation("explain examples/basic.py") is False
+
+
+def test_replace_text_noop_does_not_mark_file_changed(tmp_path) -> None:
+    target = tmp_path / "example.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    workspace = Workspace(tmp_path, apply=True, test_timeout=1.0)
+    state = AgentState(goal="refactor example.py")
+
+    result = workspace.execute(
+        "replace_text",
+        {"path": "example.py", "old": "value = 1", "new": "value = 1"},
+        state,
+    )
+
+    assert result.startswith("error: no-op mutation")
+    assert workspace.changed_files == set()
+    assert target.read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_replace_text_real_change_reports_diff(tmp_path) -> None:
+    target = tmp_path / "example.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    workspace = Workspace(tmp_path, apply=True, test_timeout=1.0)
+    state = AgentState(goal="refactor example.py")
+
+    result = workspace.execute(
+        "replace_text",
+        {"path": "example.py", "old": "value = 1", "new": "value = 2"},
+        state,
+    )
+
+    assert "updated example.py" in result
+    assert "-value = 1" in result
+    assert "+value = 2" in result
+    assert workspace.changed_files == {"example.py"}
+    assert target.read_text(encoding="utf-8") == "value = 2\n"
+
+
+def test_write_file_noop_does_not_mark_file_changed(tmp_path) -> None:
+    target = tmp_path / "example.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    workspace = Workspace(tmp_path, apply=True, test_timeout=1.0)
+    state = AgentState(goal="rewrite example.py")
+
+    result = workspace.execute(
+        "write_file",
+        {"path": "example.py", "content": "value = 1\n"},
+        state,
+    )
+
+    assert result.startswith("error: no-op mutation")
+    assert workspace.changed_files == set()
+
+
+def test_safe_path_allows_absolute_path_only_inside_workspace(tmp_path) -> None:
+    target = tmp_path / "example.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    workspace = Workspace(tmp_path, apply=True, test_timeout=1.0)
+
+    assert workspace._safe_path(str(target)) == target.resolve()
