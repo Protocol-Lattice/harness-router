@@ -589,10 +589,7 @@ For Codex, add the stdio server to `~/.codex/config.toml`:
 command = "harness-router-mcp"
 ~~~
 
-Then keep the instruction small: use `route` only at genuine ambiguity points; skip it
-for obvious linear steps. The MCP server uses the fast profile by default: equal
-`0.72` direct/fallback thresholds, a 2 second provider timeout, compact state fields,
-and flat routing through 48 candidates.
+Then keep the instruction small: use `route` only at genuine ambiguity points; skip it for obvious linear steps. Use `route_mcts` only when downstream consequences matter and the host can provide a side-effect-free simulated graph. Never use real writes, shell commands, browser mutations, or network mutations as MCTS transitions. The fast route uses equal `0.72` direct/fallback thresholds, a 2 second provider timeout, compact state fields, and flat routing through 48 candidates.
 
 ## Codex skill
 
