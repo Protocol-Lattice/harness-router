@@ -339,11 +339,6 @@ selected root action's **visit share** and `probabilities` are normalized root v
 counts; they are not calibrated Jev confidence values. If the policy router falls back,
 MCTS uses a neutral prior rather than overriding that fallback with its probability map.
 
-A runnable coding-agent example is in:
-
-~~~text
-examples/mcts_coding_agent.py
-~~~
 
 ## Hierarchical routing
 
@@ -615,64 +610,6 @@ python skills/harness-router/scripts/route.py \
     {"name":"write_file","description":"Write a source file","category":"mutate","risk":"medium"}
   ]'
 ~~~
-
-## Minimal OpenRouter free-model agent loop
-
-For a smaller end-to-end example focused on the core agent loop, use:
-
-~~~text
-examples/openrouter_free_agent_loop.py
-~~~
-
-It uses `openrouter/free` as the planner by default and `harness-router`/Jev for compact
-tool selection. The loop keeps obvious transitions local (for example, edit -> test),
-falls back to the planner when Jev is uncertain, and defaults to a temporary workspace copy.
-
-~~~bash
-export OPENROUTER_API_KEY="your-key"
-
-uv run python examples/openrouter_free_agent_loop.py \
-  "Fix the failing parser test" \
-  --workspace .
-~~~
-
-Pass `--apply` to modify the real workspace, or choose a specific free OpenRouter model
-with `--model` / `OPENROUTER_MODEL`.
-
-## OpenRouter coding-agent example
-
-A runnable local coding-agent example is available at:
-
-~~~text
-examples/coding_agent.py
-~~~
-
-It uses an OpenRouter chat model for planning, argument generation, and code generation, while
-`harness-router` uses Jev to select the next tool from a compact state. On a direct Jev route,
-the planner receives only the selected tool schema instead of the whole tool registry.
-
-~~~bash
-export OPENROUTER_API_KEY="your-key"
-
-python examples/coding_agent.py \
-  "Add a regression test for the router fallback path" \
-  --workspace .
-~~~
-
-By default the agent works in a temporary copy of the repository, so the original workspace stays unchanged. Pass `--apply` to allow mutations in the real workspace:
-
-~~~bash
-python examples/coding_agent.py \
-  "Fix the failing parser test and run the test suite" \
-  --workspace . \
-  --apply
-~~~
-
-The planner model defaults to `openrouter/free`. Override it with `--model` or
-`OPENROUTER_MODEL`. The example follows the cost-aware rules from
-`skills/harness-router/SKILL.md`: at most one Jev routing call per task, no retry after a
-router fallback, and planner-only argument/code generation. It intentionally exposes no
-arbitrary shell tool; verification is limited to `pytest -q`.
 
 ## Configuration
 
