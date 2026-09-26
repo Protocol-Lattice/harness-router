@@ -45,6 +45,11 @@ Authorization header, cookie, private key, or signing material encountered while
 A request to debug authentication does **not** authorize inspecting the secret value. Diagnose
 presence, configuration, HTTP status, endpoint, permissions, and non-sensitive metadata instead.
 
+If the host harness exposes a generic shell, terminal, filesystem, browser, HTTP, or upload tool,
+treat secret disclosure as an execution-policy denial. A Jev selection or planner proposal must
+not override this boundary. Reject commands/actions that would reveal credentials before execution,
+even when the selected generic tool itself would otherwise be allowed.
+
 ### Safe presence check
 
 If routing requires confirming that the variable exists, check only the boolean presence and do
