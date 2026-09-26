@@ -2,7 +2,9 @@
   <img src="./assets/harness-router-logo.png" width="500" alt="harness-router">
 </p>
 
-**Framework-agnostic Jev tool routing for agentic harnesses.**
+<p align="center">
+  <strong>Framework-agnostic Jev tool routing for agentic harnesses.</strong>
+</p>
 
 <code>harness-router</code> uses [TypeSafeAI Jev](https://www.typesafe.ai/) through the [OpenRouter Decisions API](https://openrouter.ai/) as a fast **System-1 tool-selection layer**.
 
