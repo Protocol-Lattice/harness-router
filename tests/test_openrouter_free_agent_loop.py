@@ -1,6 +1,8 @@
 from examples.openrouter_free_agent_loop import (
     AgentState,
     Workspace,
+    _destructive_truncation_reason,
+    _goal_requires_full_file_rewrite,
     _goal_requires_mutation,
     _history_text,
     _parse_planner_message,
@@ -169,3 +171,58 @@ def test_history_text_keeps_full_outcome() -> None:
 
     assert content in rendered
     assert len(rendered) > 20_000
+
+
+def test_target_path_from_goal_accepts_bare_filename() -> None:
+    assert _target_path_from_goal(
+        "rewrite README.md in polish"
+    ) == "README.md"
+
+
+def test_rewrite_goal_requires_full_file_write() -> None:
+    assert _goal_requires_full_file_rewrite("rewrite README.md in polish") is True
+
+
+def test_destructive_truncation_is_blocked_for_large_rewrite() -> None:
+    before = "\n".join(f"line {index}" for index in range(100))
+    after = "# only one line\n"
+
+    reason = _destructive_truncation_reason(
+        before,
+        after,
+        goal="rewrite README.md in polish",
+    )
+
+    assert reason is not None
+    assert "complete final file" in reason
+
+
+def test_large_shrink_is_allowed_when_goal_explicitly_requests_it() -> None:
+    before = "\n".join(f"line {index}" for index in range(100))
+    after = "# summary\n"
+
+    reason = _destructive_truncation_reason(
+        before,
+        after,
+        goal="shorten README.md to a brief summary",
+    )
+
+    assert reason is None
+
+
+def test_write_file_rejects_catastrophic_truncation(tmp_path) -> None:
+    target = tmp_path / "README.md"
+    original = "\n".join(f"line {index}" for index in range(100)) + "\n"
+    target.write_text(original, encoding="utf-8")
+    workspace = Workspace(tmp_path, apply=True, test_timeout=1.0)
+    state = AgentState(goal="rewrite README.md in polish")
+
+    result = workspace.execute(
+        "write_file",
+        {"path": "README.md", "content": "# Polski README\n"},
+        state,
+    )
+
+    assert result.startswith("error: destructive write blocked:")
+    assert workspace.changed_files == set()
+    assert target.read_text(encoding="utf-8") == original
