@@ -11,6 +11,9 @@ from .errors import InvalidProviderResponse, ProviderError, ProviderTimeoutError
 from .models import ChoiceDecision
 
 
+_REDACTED = "[REDACTED]"
+
+
 class DecisionProvider(Protocol):
     async def choose(
         self,
@@ -94,6 +97,7 @@ class OpenRouterJevProvider:
                 }
             },
         }
+        self._assert_api_key_not_in_payload(payload)
 
         try:
             response = await self._client.post(
@@ -105,15 +109,19 @@ class OpenRouterJevProvider:
                 json=payload,
             )
             response.raise_for_status()
-        except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError("OpenRouter Jev request timed out") from exc
+        except httpx.TimeoutException:
+            # Do not retain the httpx exception as __cause__: it owns the request object,
+            # including the Authorization header.
+            raise ProviderTimeoutError("OpenRouter Jev request timed out") from None
         except httpx.HTTPStatusError as exc:
-            body = exc.response.text[:500]
+            body = self._redact_api_key(exc.response.text[:500])
+            status_code = exc.response.status_code
             raise ProviderError(
-                f"OpenRouter Jev returned HTTP {exc.response.status_code}: {body}"
-            ) from exc
+                f"OpenRouter Jev returned HTTP {status_code}: {body}"
+            ) from None
         except httpx.HTTPError as exc:
-            raise ProviderError(f"OpenRouter Jev request failed: {exc}") from exc
+            message = self._redact_api_key(str(exc))
+            raise ProviderError(f"OpenRouter Jev request failed: {message}") from None
 
         try:
             data = response.json()
@@ -152,6 +160,18 @@ class OpenRouterJevProvider:
             probabilities=probabilities,
             confidence=confidence,
         )
+
+    def _assert_api_key_not_in_payload(self, payload: object) -> None:
+        serialized = json.dumps(payload, ensure_ascii=False, default=str)
+        if self._api_key and self._api_key in serialized:
+            raise ProviderError(
+                "refusing to send a routing payload containing the OpenRouter API key"
+            )
+
+    def _redact_api_key(self, value: str) -> str:
+        if not self._api_key:
+            return value
+        return value.replace(self._api_key, _REDACTED)
 
     async def aclose(self) -> None:
         if self._owns_client:
