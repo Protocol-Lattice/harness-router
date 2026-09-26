@@ -34,7 +34,11 @@
     }
 
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+    html {
+      scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
     body {
       margin: 0;
       min-height: 100vh;
@@ -47,8 +51,10 @@
         var(--bg);
       background-size: 46px 46px, 46px 46px, auto, auto, auto;
       font-family: var(--sans);
+      overflow-x: hidden;
     }
 
+    img, svg, video { max-width: 100%; height: auto; }
     a { color: inherit; text-decoration: none; }
     button { font: inherit; }
     code { font-family: var(--mono); }
@@ -693,28 +699,287 @@
     }
 
     @media (max-width: 620px) {
-      .shell { width: min(calc(100% - 24px), var(--max)); }
-      .nav { min-height: 64px; }
+      .shell {
+        width: min(calc(100% - 24px), var(--max));
+      }
+
+      .nav {
+        min-height: 62px;
+        gap: 12px;
+      }
+
+      .brand {
+        gap: 8px;
+        font-size: 10px;
+        letter-spacing: .13em;
+      }
+
+      .nav-links {
+        gap: 0;
+        font-size: 10px;
+      }
+
       .nav-links a:not(:last-child) { display: none; }
-      .hero { padding: 64px 0 58px; }
-      h1 { font-size: clamp(56px, 18vw, 82px); }
-      .hero-aside { padding-left: 17px; }
-      .stats { grid-template-columns: 1fr; }
-      .stat { border-right: 0; border-bottom: 1px solid var(--line); }
-      .stat:last-child { border-bottom: 0; }
+
+      .hero {
+        padding: 54px 0 52px;
+        gap: 42px;
+      }
+
+      .section-id {
+        gap: 10px;
+        font-size: 9.5px;
+        letter-spacing: .12em;
+      }
+
+      .section-id::after { width: 42px; }
+
+      h1 {
+        margin: 26px 0 22px;
+        font-size: clamp(46px, 15.5vw, 68px);
+        line-height: .9;
+        letter-spacing: -.055em;
+      }
+
+      .hero-copy {
+        font-size: 16px;
+        line-height: 1.6;
+      }
+
+      .install {
+        margin-top: 28px;
+      }
+
+      .command {
+        min-height: 0;
+        align-items: stretch;
+        flex-wrap: wrap;
+        gap: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .prompt {
+        padding: 17px 0 0 15px;
+      }
+
+      .command code {
+        width: calc(100% - 34px);
+        flex: 0 0 calc(100% - 34px);
+        padding: 15px 14px 15px 9px;
+        overflow: visible;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.6;
+      }
+
+      .copy {
+        width: 100%;
+        min-height: 42px;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+        padding: 0 15px;
+        text-align: left;
+      }
+
+      .hero-aside {
+        max-width: none;
+        padding-left: 15px;
+      }
+
+      .route-word {
+        font-size: 27px;
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .stat {
+        min-height: 105px;
+        padding: 22px 16px;
+        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .stat:nth-child(2n) { border-right: 0; }
+      .stat:nth-last-child(-n+2) { border-bottom: 0; }
+
+      .stat strong {
+        margin-bottom: 13px;
+        font-size: 25px;
+      }
+
       .story {
         grid-template-columns: 1fr;
-        gap: 18px;
-        padding: 78px 0;
+        gap: 17px;
+        padding: 68px 0;
       }
-      .story > :last-child { grid-column: auto; }
-      .story h2 { margin-top: 0; }
-      .install-section { padding: 82px 0 92px; }
-      .cta { padding: 90px 0 100px; }
+
+      .story > :last-child {
+        grid-column: auto;
+        margin-top: 10px;
+      }
+
+      .story h2 {
+        margin-top: 0;
+        font-size: clamp(40px, 13vw, 56px);
+        line-height: .96;
+      }
+
+      .story-copy {
+        font-size: 15px;
+        line-height: 1.65;
+      }
+
+      .terminal,
+      .benchmark-panel,
+      .mcts-tree {
+        width: 100%;
+        min-width: 0;
+      }
+
+      pre {
+        padding: 17px;
+        font-size: 10.5px;
+        line-height: 1.7;
+      }
+
+      .bench-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 16px;
+      }
+
+      .bench-row strong {
+        text-align: left;
+        font-size: 18px;
+      }
+
+      .bench-note {
+        padding: 16px;
+      }
+
+      .mcts-tree {
+        min-height: 320px;
+        padding: 28px 8px 48px;
+      }
+
+      .tree {
+        width: 100%;
+        gap: 22px;
+      }
+
+      .tree-row {
+        gap: 7px;
+      }
+
+      .node {
+        min-width: 0;
+        width: min(30%, 91px);
+        padding: 10px 5px;
+        font-size: 9px;
+      }
+
+      .tree-row:first-child .node {
+        width: min(44%, 120px);
+      }
+
+      .mcts-badge {
+        right: 10px;
+        bottom: 11px;
+        left: 10px;
+        text-align: center;
+        line-height: 1.4;
+      }
+
+      .install-section {
+        padding: 76px 0 84px;
+      }
+
+      .install-head {
+        margin-bottom: 30px;
+      }
+
+      .install-head h2 {
+        font-size: clamp(42px, 13vw, 58px);
+        line-height: .95;
+      }
+
+      .install-step {
+        padding: 21px 18px;
+      }
+
+      .install-step h3 {
+        margin-top: 25px;
+      }
+
+      .mini-code {
+        padding: 13px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .cta {
+        padding: 82px 0 90px;
+      }
+
+      .cta h2 {
+        font-size: clamp(48px, 15vw, 68px);
+      }
+
+      .cta p {
+        font-size: 15px;
+      }
+
+      .cta-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        width: 100%;
+      }
+
+      .btn {
+        width: 100%;
+        min-height: 50px;
+      }
+
       footer {
         align-items: flex-start;
         flex-direction: column;
-        padding: 27px 0;
+        gap: 8px;
+        padding: 25px 0 30px;
+      }
+    }
+
+    @media (max-width: 380px) {
+      .shell { width: min(calc(100% - 20px), var(--max)); }
+
+      .brand {
+        max-width: 160px;
+        line-height: 1.2;
+      }
+
+      h1 {
+        font-size: clamp(42px, 15vw, 58px);
+      }
+
+      .stats {
+        grid-template-columns: 1fr;
+      }
+
+      .stat,
+      .stat:nth-child(2n) {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .stat:last-child { border-bottom: 0; }
+
+      .tree-row { gap: 5px; }
+
+      .node {
+        width: 31%;
+        font-size: 8.5px;
       }
     }
 
