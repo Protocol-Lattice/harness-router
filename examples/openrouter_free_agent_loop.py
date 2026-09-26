@@ -166,6 +166,8 @@ class OpenRouterFreePlanner:
         prompt = (
             "Choose exactly one next coding-agent tool. Inspect before editing, prefer the "
             "smallest correct edit, run tests after mutations, and only finish after tests pass. "
+            "Return exactly one tool call, never a list or batch. Do not repeat the same "
+            "read/list/search with identical arguments unless a mutation changed the workspace. "
             "Use native tool calling. If native tool calling is unavailable, return only JSON "
             'in the form {"tool":"name","arguments":{...}}.\n\n'
             f"GOAL:\n{state.goal}\n\n"
