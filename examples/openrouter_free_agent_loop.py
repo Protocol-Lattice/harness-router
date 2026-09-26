@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import difflib
 import importlib.util
 import json
 import os
@@ -337,23 +338,41 @@ class Workspace:
             new = _string(arguments, "new", allow_empty=True)
             if not path.is_file():
                 return "error: target file not found"
+            if old == new:
+                return "error: no-op mutation: old and new text are identical"
             content = path.read_text(encoding="utf-8")
             count = content.count(old)
             if count != 1:
                 return f"error: expected exactly one match, found {count}"
-            path.write_text(content.replace(old, new, 1), encoding="utf-8")
-            self.changed_files.add(str(path.relative_to(self.root)))
+            updated = content.replace(old, new, 1)
+            if updated == content:
+                return "error: no-op mutation: file content would not change"
+            path.write_text(updated, encoding="utf-8")
+            relative = str(path.relative_to(self.root))
+            self.changed_files.add(relative)
             state.tests_passed = False
-            return f"updated {path.relative_to(self.root)}"
+            return _mutation_result("updated", relative, content, updated)
 
         if tool_name == "write_file":
             path = self._safe_path(_string(arguments, "path"))
             content = _string(arguments, "content", allow_empty=True)
+            previous = ""
+            existed = path.is_file()
+            if existed:
+                previous = path.read_text(encoding="utf-8")
+                if previous == content:
+                    return "error: no-op mutation: generated content matches the existing file"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
-            self.changed_files.add(str(path.relative_to(self.root)))
+            relative = str(path.relative_to(self.root))
+            self.changed_files.add(relative)
             state.tests_passed = False
-            return f"wrote {path.relative_to(self.root)}"
+            return _mutation_result(
+                "updated" if existed else "created",
+                relative,
+                previous,
+                content,
+            )
 
         if tool_name == "run_tests":
             command = [sys.executable, "-m", "pytest", "-q"]
@@ -394,10 +413,8 @@ class Workspace:
         return f"error: unknown tool {tool_name}"
 
     def _safe_path(self, value: str) -> Path:
-        relative = Path(value)
-        if relative.is_absolute():
-            raise ValueError("absolute paths are not allowed")
-        candidate = (self.root / relative).resolve()
+        raw = Path(value)
+        candidate = raw.resolve() if raw.is_absolute() else (self.root / raw).resolve()
         if not candidate.is_relative_to(self.root):
             raise ValueError("path escapes the workspace")
         if ".git" in candidate.relative_to(self.root).parts:
@@ -506,7 +523,16 @@ class CodingAgent:
                     for tool in TOOLS
                     if tool.name in {"replace_text", "write_file"}
                 ]
-                return await self.planner.choose(state, mutation_tools)
+                tool_name, arguments = await self.planner.choose(state, mutation_tools)
+                if target_path is not None:
+                    planned_path = arguments.get("path")
+                    if planned_path != target_path:
+                        print(
+                            f"[progress] scoped mutation path: "
+                            f"{planned_path!r} -> {target_path!r}"
+                        )
+                    arguments["path"] = target_path
+                return tool_name, arguments
 
         if state.router_enabled and state.router_calls < MAX_ROUTER_CALLS:
             state.router_calls += 1
@@ -669,6 +695,28 @@ def _parse_arguments(value: Any) -> dict[str, Any] | None:
             return None
         return parsed if isinstance(parsed, dict) else None
     return None
+
+
+def _mutation_result(
+    action: str,
+    path: str,
+    before: str,
+    after: str,
+) -> str:
+    diff = "".join(
+        difflib.unified_diff(
+            before.splitlines(keepends=True),
+            after.splitlines(keepends=True),
+            fromfile=f"a/{path}",
+            tofile=f"b/{path}",
+            n=2,
+        )
+    )
+    if not diff:
+        return "error: no-op mutation: no diff produced"
+    clipped = diff[:4000]
+    suffix = "\n... diff clipped ..." if len(diff) > len(clipped) else ""
+    return f"{action} {path}\n{clipped}{suffix}"
 
 
 def _goal_requires_mutation(goal: str) -> bool:
