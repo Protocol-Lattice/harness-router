@@ -932,7 +932,7 @@
         </div>
         <div class="proof">
           <strong>Native MCP</strong>
-          <span>One compact route tool</span>
+          <span>route + route_mcts</span>
         </div>
         <div class="proof">
           <strong>Python 3.11+</strong>
@@ -1089,8 +1089,8 @@
             <h2>Install the router once. Keep the skill tiny.</h2>
           </div>
           <p class="section-copy">
-            The native stdio MCP server exposes a single compact <code>route</code> tool.
-            Codex can call it only at real ambiguity points, while obvious read → edit → test
+            The native stdio MCP server exposes fast <code>route</code> plus bounded <code>route_mcts</code>.
+            Codex should use them only at real ambiguity points, while obvious read → edit → test
             steps stay on the normal fast path. The MCP implementation currently lives on
             <code>main</code>, so install it directly from GitHub until the next package release.
           </p>
@@ -1168,11 +1168,34 @@ startup_timeout_sec = 10
 tool_timeout_sec = 5</code></pre>
         </div>
 
+        <div class="mcp-config">
+          <aside class="mcp-tip">
+            <strong>MCP MCTS</strong>
+            <h3>Look ahead without executing real tools.</h3>
+            <p>
+              Use <code>route_mcts</code> only when the best first action depends on downstream
+              consequences and your harness can provide a predicted, side-effect-free state graph.
+              The search executes no real writes, shell commands, browser mutations, or network mutations.
+            </p>
+          </aside>
+
+          <pre><code>route           # fast Jev decision
+route_mcts      # bounded PUCT search
+
+recommended:
+simulations = 32
+max_depth = 3
+use_jev_prior = true
+
+# Jev is evaluated at most once.
+# Remaining simulations are local.</code></pre>
+        </div>
+
         <div class="explain">
           <strong>Verify it</strong>
           <p>
             Restart Codex after changing the MCP configuration, then run <code>/mcp</code>.
-            The harness-router server should expose the <code>route</code> tool. Running
+            The harness-router server should expose both <code>route</code> and <code>route_mcts</code>. Running
             <code>harness-router-mcp</code> manually should appear to hang silently — that is normal:
             the stdio server is waiting for an MCP client. If the API key is missing, the server still
             loads and <code>route</code> returns a controlled <code>missing_openrouter_api_key</code> fallback.
