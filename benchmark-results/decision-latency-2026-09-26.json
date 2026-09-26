@@ -1,0 +1,2689 @@
+{
+  "protocol": {
+    "id": "decision-latency-2026-09-26",
+    "created_at": "2026-09-26T18:29:03.754Z",
+    "checkout_commit": "66cea2195ba8de06e85752f3c094c517a2dd1611",
+    "arms": [
+      "Codex in-session name-only choice",
+      "installed harness-router route MCP"
+    ],
+    "trials": 24,
+    "seed": 260926,
+    "native_timing": "Date.now immediately before returning a scenario until Date.now at the beginning of the next functions.exec submission; includes model reasoning, short submission generation, host scheduling and transport.",
+    "router_timing": "Date.now immediately before route MCP invocation until its promise resolves; includes MCP/provider/network overhead.",
+    "exclusions": [
+      "tool execution",
+      "tool argument generation beyond the choice-recording envelope",
+      "repository inspection and setup",
+      "warmup",
+      "report generation"
+    ],
+    "limitations": [
+      "Not pure model-compute timing; the two arms have different host envelopes.",
+      "Single growing Codex context, not independent fresh sessions; main model authored scenario templates.",
+      "Candidate-name choice benchmark, not native tool-schema function-call generation.",
+      "First-use inputs prevent intentional exact-cache hits; installed server version and internal cache/provider timings are not exposed."
+    ],
+    "constraints": {
+      "python_script": false,
+      "openai_api": false,
+      "subagents": false
+    },
+    "completed_at": "2026-09-26T18:34:07.065Z"
+  },
+  "warmup_excluded": {
+    "elapsed_ms": 695,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n  \"tool\": \"read_file\",\n  \"confidence\": 0.91,\n  \"fallback\": false,\n  \"reason\": null\n}"
+        }
+      ],
+      "structuredContent": {
+        "tool": "read_file",
+        "confidence": 0.91,
+        "fallback": false,
+        "reason": null
+      },
+      "isError": false
+    }
+  },
+  "summary": {
+    "native": {
+      "n": 24,
+      "total_ms": 92210,
+      "mean_ms": 3842.0833333333335,
+      "median_ms": 3384,
+      "p95_ms": 6435,
+      "min_ms": 2492,
+      "max_ms": 8123
+    },
+    "router": {
+      "n": 24,
+      "total_ms": 9708,
+      "mean_ms": 404.5,
+      "median_ms": 332,
+      "p95_ms": 718,
+      "min_ms": 276,
+      "max_ms": 1326
+    },
+    "by_candidates": [
+      {
+        "candidates": 4,
+        "native": {
+          "n": 8,
+          "total_ms": 27387,
+          "mean_ms": 3423.375,
+          "median_ms": 3137.5,
+          "p95_ms": 6435,
+          "min_ms": 2492,
+          "max_ms": 6435
+        },
+        "router": {
+          "n": 8,
+          "total_ms": 2916,
+          "mean_ms": 364.5,
+          "median_ms": 364,
+          "p95_ms": 438,
+          "min_ms": 293,
+          "max_ms": 438
+        }
+      },
+      {
+        "candidates": 8,
+        "native": {
+          "n": 8,
+          "total_ms": 27793,
+          "mean_ms": 3474.125,
+          "median_ms": 3161,
+          "p95_ms": 4940,
+          "min_ms": 2743,
+          "max_ms": 4940
+        },
+        "router": {
+          "n": 8,
+          "total_ms": 2548,
+          "mean_ms": 318.5,
+          "median_ms": 318,
+          "p95_ms": 358,
+          "min_ms": 276,
+          "max_ms": 358
+        }
+      },
+      {
+        "candidates": 16,
+        "native": {
+          "n": 8,
+          "total_ms": 37030,
+          "mean_ms": 4628.75,
+          "median_ms": 4281,
+          "p95_ms": 8123,
+          "min_ms": 3251,
+          "max_ms": 8123
+        },
+        "router": {
+          "n": 8,
+          "total_ms": 4244,
+          "mean_ms": 530.5,
+          "median_ms": 309,
+          "p95_ms": 1326,
+          "min_ms": 285,
+          "max_ms": 1326
+        }
+      }
+    ],
+    "by_order": [
+      {
+        "order": "native_first",
+        "native": {
+          "n": 12,
+          "total_ms": 47527,
+          "mean_ms": 3960.5833333333335,
+          "median_ms": 3374,
+          "p95_ms": 8123,
+          "min_ms": 2492,
+          "max_ms": 8123
+        },
+        "router": {
+          "n": 12,
+          "total_ms": 5454,
+          "mean_ms": 454.5,
+          "median_ms": 351,
+          "p95_ms": 1326,
+          "min_ms": 293,
+          "max_ms": 1326
+        }
+      },
+      {
+        "order": "router_first",
+        "native": {
+          "n": 12,
+          "total_ms": 44683,
+          "mean_ms": 3723.5833333333335,
+          "median_ms": 3490.5,
+          "p95_ms": 5218,
+          "min_ms": 2561,
+          "max_ms": 5218
+        },
+        "router": {
+          "n": 12,
+          "total_ms": 4254,
+          "mean_ms": 354.5,
+          "median_ms": 307.5,
+          "p95_ms": 718,
+          "min_ms": 276,
+          "max_ms": 718
+        }
+      }
+    ],
+    "agreements": 24,
+    "native_matches_authored_expected": 24,
+    "router_matches_authored_expected": 24,
+    "fallbacks": 0,
+    "errors": 0,
+    "all_native_durations_valid": true,
+    "all_router_durations_valid": true,
+    "unique_router_inputs": 24
+  },
+  "records": [
+    {
+      "id": "c16-7",
+      "family": "final_diff_review",
+      "expected": "inspect_diff",
+      "candidate_count": 16,
+      "input": {
+        "goal": "Finish the code change after the required final review.",
+        "observation": "Tests and lint passed after the final edit to worker-16-7-d864195. The complete pending diff has not been reviewed; that review is the sole remaining requirement. The list of modified paths is already known.",
+        "last_action": "run_linter",
+        "tools": [
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_git_status",
+            "description": "List modified, staged and untracked repository paths",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "search_docs",
+            "description": "Find reference documentation for an unfamiliar API",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_browser",
+            "description": "Read the current browser page and visible controls",
+            "category": "browser",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 1,
+      "native": {
+        "started_at_ms": 1790447430025,
+        "ended_at_ms": 1790447438148,
+        "elapsed_ms": 8123,
+        "tool": "inspect_diff"
+      },
+      "router": {
+        "started_at_ms": 1790447438150,
+        "ended_at_ms": 1790447439476,
+        "elapsed_ms": 1326,
+        "decision": {
+          "tool": "inspect_diff",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"inspect_diff\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "inspect_diff",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c16-2",
+      "family": "unknown_implementation",
+      "expected": "search_code",
+      "candidate_count": 16,
+      "input": {
+        "goal": "Locate the implementation responsible for stale configuration reloads.",
+        "observation": "The only lead is the symbol refreshConfig16-2-d435160; its file is unknown. Repository structure is already listed. Locate its definition before diagnosing it.",
+        "last_action": "list_files",
+        "tools": [
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_git_status",
+            "description": "List modified, staged and untracked repository paths",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_browser",
+            "description": "Read the current browser page and visible controls",
+            "category": "browser",
+            "risk": "low"
+          },
+          {
+            "name": "search_docs",
+            "description": "Find reference documentation for an unfamiliar API",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 2,
+      "native": {
+        "started_at_ms": 1790447440194,
+        "ended_at_ms": 1790447444557,
+        "elapsed_ms": 4363,
+        "tool": "search_code"
+      },
+      "router": {
+        "started_at_ms": 1790447439476,
+        "ended_at_ms": 1790447440194,
+        "elapsed_ms": 718,
+        "decision": {
+          "tool": "search_code",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"search_code\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "search_code",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c4-7",
+      "family": "final_diff_review",
+      "expected": "inspect_diff",
+      "candidate_count": 4,
+      "input": {
+        "goal": "Finish the code change after the required final review.",
+        "observation": "Tests and lint passed after the final edit to worker-4-7-d326864. The complete pending diff has not been reviewed; that review is the sole remaining requirement. The list of modified paths is already known.",
+        "last_action": "run_linter",
+        "tools": [
+          {
+            "name": "inspect_git_status",
+            "description": "List modified, staged and untracked repository paths",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 3,
+      "native": {
+        "started_at_ms": 1790447444557,
+        "ended_at_ms": 1790447447993,
+        "elapsed_ms": 3436,
+        "tool": "inspect_diff"
+      },
+      "router": {
+        "started_at_ms": 1790447447994,
+        "ended_at_ms": 1790447448305,
+        "elapsed_ms": 311,
+        "decision": {
+          "tool": "inspect_diff",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"inspect_diff\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "inspect_diff",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c16-1",
+      "family": "unread_known_file",
+      "expected": "read_file",
+      "candidate_count": 16,
+      "input": {
+        "goal": "Diagnose a parser failure before editing.",
+        "observation": "The stack trace identifies src/parser-16-1-d832005.ts. The failing line and surrounding source have not been read. Detailed test output is already available.",
+        "last_action": "inspect_test_output",
+        "tools": [
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          },
+          {
+            "name": "search_docs",
+            "description": "Find reference documentation for an unfamiliar API",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_git_status",
+            "description": "List modified, staged and untracked repository paths",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_browser",
+            "description": "Read the current browser page and visible controls",
+            "category": "browser",
+            "risk": "low"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 4,
+      "native": {
+        "started_at_ms": 1790447448306,
+        "ended_at_ms": 1790447451804,
+        "elapsed_ms": 3498,
+        "tool": "read_file"
+      },
+      "router": {
+        "started_at_ms": 1790447451806,
+        "ended_at_ms": 1790447452521,
+        "elapsed_ms": 715,
+        "decision": {
+          "tool": "read_file",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"read_file\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "read_file",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c16-3",
+      "family": "ready_patch",
+      "expected": "apply_patch",
+      "candidate_count": 16,
+      "input": {
+        "goal": "Fix an off-by-one boundary in the range validator.",
+        "observation": "Source and failing test for src/range-16-3-d312776.ts were inspected. Diagnosis is complete: the guard incorrectly uses >= where the specified exclusive bound requires >. The exact replacement is known and edits are authorized.",
+        "last_action": "read_file",
+        "tools": [
+          {
+            "name": "search_docs",
+            "description": "Find reference documentation for an unfamiliar API",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_browser",
+            "description": "Read the current browser page and visible controls",
+            "category": "browser",
+            "risk": "low"
+          },
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_git_status",
+            "description": "List modified, staged and untracked repository paths",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 5,
+      "native": {
+        "started_at_ms": 1790447452809,
+        "ended_at_ms": 1790447456458,
+        "elapsed_ms": 3649,
+        "tool": "apply_patch"
+      },
+      "router": {
+        "started_at_ms": 1790447452522,
+        "ended_at_ms": 1790447452809,
+        "elapsed_ms": 287,
+        "decision": {
+          "tool": "apply_patch",
+          "confidence": 0.99,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"apply_patch\",\n  \"confidence\": 0.99,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "apply_patch",
+            "confidence": 0.99,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c16-4",
+      "family": "first_verification",
+      "expected": "run_focused_tests",
+      "candidate_count": 16,
+      "input": {
+        "goal": "Verify the newly applied local parser correction.",
+        "observation": "A one-line fix was just applied to src/token-16-4-d894436.ts. Relevant unit tests are known and take seconds; the full suite takes 20 minutes. No tests have run since this change.",
+        "last_action": "apply_patch",
+        "tools": [
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "search_docs",
+            "description": "Find reference documentation for an unfamiliar API",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_git_status",
+            "description": "List modified, staged and untracked repository paths",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_browser",
+            "description": "Read the current browser page and visible controls",
+            "category": "browser",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 6,
+      "native": {
+        "started_at_ms": 1790447456755,
+        "ended_at_ms": 1790447461484,
+        "elapsed_ms": 4729,
+        "tool": "run_focused_tests"
+      },
+      "router": {
+        "started_at_ms": 1790447456460,
+        "ended_at_ms": 1790447456755,
+        "elapsed_ms": 295,
+        "decision": {
+          "tool": "run_focused_tests",
+          "confidence": 0.99,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"run_focused_tests\",\n  \"confidence\": 0.99,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "run_focused_tests",
+            "confidence": 0.99,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c8-2",
+      "family": "unknown_implementation",
+      "expected": "search_code",
+      "candidate_count": 8,
+      "input": {
+        "goal": "Locate the implementation responsible for stale configuration reloads.",
+        "observation": "The only lead is the symbol refreshConfig8-2-d77657; its file is unknown. Repository structure is already listed. Locate its definition before diagnosing it.",
+        "last_action": "list_files",
+        "tools": [
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "search_docs",
+            "description": "Find reference documentation for an unfamiliar API",
+            "category": "inspect",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 7,
+      "native": {
+        "started_at_ms": 1790447469840,
+        "ended_at_ms": 1790447473011,
+        "elapsed_ms": 3171,
+        "tool": "search_code"
+      },
+      "router": {
+        "started_at_ms": 1790447469528,
+        "ended_at_ms": 1790447469840,
+        "elapsed_ms": 312,
+        "decision": {
+          "tool": "search_code",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"search_code\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "search_code",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c8-4",
+      "family": "first_verification",
+      "expected": "run_focused_tests",
+      "candidate_count": 8,
+      "input": {
+        "goal": "Verify the newly applied local parser correction.",
+        "observation": "A one-line fix was just applied to src/token-8-4-d103114.ts. Relevant unit tests are known and take seconds; the full suite takes 20 minutes. No tests have run since this change.",
+        "last_action": "apply_patch",
+        "tools": [
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 8,
+      "native": {
+        "started_at_ms": 1790447473014,
+        "ended_at_ms": 1790447477954,
+        "elapsed_ms": 4940,
+        "tool": "run_focused_tests"
+      },
+      "router": {
+        "started_at_ms": 1790447477956,
+        "ended_at_ms": 1790447478300,
+        "elapsed_ms": 344,
+        "decision": {
+          "tool": "run_focused_tests",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"run_focused_tests\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "run_focused_tests",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c4-6",
+      "family": "missing_lint",
+      "expected": "run_linter",
+      "candidate_count": 4,
+      "input": {
+        "goal": "Complete outstanding checks for the formatting cleanup.",
+        "observation": "All tests pass and the diff for formatter-4-6-d347148 has already been reviewed. The project requires a clean lint result; lint has not run. There is no recorded lint diagnostic to act on.",
+        "last_action": "inspect_diff",
+        "tools": [
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 9,
+      "native": {
+        "started_at_ms": 1790447478301,
+        "ended_at_ms": 1790447480793,
+        "elapsed_ms": 2492,
+        "tool": "run_linter"
+      },
+      "router": {
+        "started_at_ms": 1790447480795,
+        "ended_at_ms": 1790447481175,
+        "elapsed_ms": 380,
+        "decision": {
+          "tool": "run_linter",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"run_linter\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "run_linter",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c4-8",
+      "family": "missing_user_intent",
+      "expected": "request_clarification",
+      "candidate_count": 4,
+      "input": {
+        "goal": "Implement the requested change to export behavior.",
+        "observation": "Request 4-8-d409559 says 'change exports to the new format' but never identifies a format. Both CSV and JSON are supported, no repository convention resolves the choice, and implementing either would be a materially different feature.",
+        "last_action": "search_docs",
+        "tools": [
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 10,
+      "native": {
+        "started_at_ms": 1790447481175,
+        "ended_at_ms": 1790447484487,
+        "elapsed_ms": 3312,
+        "tool": "request_clarification"
+      },
+      "router": {
+        "started_at_ms": 1790447484489,
+        "ended_at_ms": 1790447484915,
+        "elapsed_ms": 426,
+        "decision": {
+          "tool": "request_clarification",
+          "confidence": 0.99,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"request_clarification\",\n  \"confidence\": 0.99,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "request_clarification",
+            "confidence": 0.99,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c8-8",
+      "family": "missing_user_intent",
+      "expected": "request_clarification",
+      "candidate_count": 8,
+      "input": {
+        "goal": "Implement the requested change to export behavior.",
+        "observation": "Request 8-8-d868945 says 'change exports to the new format' but never identifies a format. Both CSV and JSON are supported, no repository convention resolves the choice, and implementing either would be a materially different feature.",
+        "last_action": "search_docs",
+        "tools": [
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_browser",
+            "description": "Read the current browser page and visible controls",
+            "category": "browser",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 11,
+      "native": {
+        "started_at_ms": 1790447485192,
+        "ended_at_ms": 1790447488343,
+        "elapsed_ms": 3151,
+        "tool": "request_clarification"
+      },
+      "router": {
+        "started_at_ms": 1790447484916,
+        "ended_at_ms": 1790447485192,
+        "elapsed_ms": 276,
+        "decision": {
+          "tool": "request_clarification",
+          "confidence": 0.99,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"request_clarification\",\n  \"confidence\": 0.99,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "request_clarification",
+            "confidence": 0.99,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c4-3",
+      "family": "ready_patch",
+      "expected": "apply_patch",
+      "candidate_count": 4,
+      "input": {
+        "goal": "Fix an off-by-one boundary in the range validator.",
+        "observation": "Source and failing test for src/range-4-3-d442799.ts were inspected. Diagnosis is complete: the guard incorrectly uses >= where the specified exclusive bound requires >. The exact replacement is known and edits are authorized.",
+        "last_action": "read_file",
+        "tools": [
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 12,
+      "native": {
+        "started_at_ms": 1790447488782,
+        "ended_at_ms": 1790447491343,
+        "elapsed_ms": 2561,
+        "tool": "apply_patch"
+      },
+      "router": {
+        "started_at_ms": 1790447488344,
+        "ended_at_ms": 1790447488782,
+        "elapsed_ms": 438,
+        "decision": {
+          "tool": "apply_patch",
+          "confidence": 0.99,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"apply_patch\",\n  \"confidence\": 0.99,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "apply_patch",
+            "confidence": 0.99,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c16-6",
+      "family": "missing_lint",
+      "expected": "run_linter",
+      "candidate_count": 16,
+      "input": {
+        "goal": "Complete outstanding checks for the formatting cleanup.",
+        "observation": "All tests pass and the diff for formatter-16-6-d850932 has already been reviewed. The project requires a clean lint result; lint has not run. There is no recorded lint diagnostic to act on.",
+        "last_action": "inspect_diff",
+        "tools": [
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_browser",
+            "description": "Read the current browser page and visible controls",
+            "category": "browser",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_git_status",
+            "description": "List modified, staged and untracked repository paths",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "search_docs",
+            "description": "Find reference documentation for an unfamiliar API",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 13,
+      "native": {
+        "started_at_ms": 1790447496546,
+        "ended_at_ms": 1790447499797,
+        "elapsed_ms": 3251,
+        "tool": "run_linter"
+      },
+      "router": {
+        "started_at_ms": 1790447499799,
+        "ended_at_ms": 1790447500114,
+        "elapsed_ms": 315,
+        "decision": {
+          "tool": "run_linter",
+          "confidence": 0.99,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"run_linter\",\n  \"confidence\": 0.99,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "run_linter",
+            "confidence": 0.99,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c8-5",
+      "family": "broader_regression",
+      "expected": "run_full_tests",
+      "candidate_count": 8,
+      "input": {
+        "goal": "Complete the required regression verification for a shared library change.",
+        "observation": "The focused unit tests and lint checks pass for core-8-5-d535104. The task explicitly requires the entire suite before completion; that suite has not yet run. No further edit is pending.",
+        "last_action": "run_focused_tests",
+        "tools": [
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 14,
+      "native": {
+        "started_at_ms": 1790447500115,
+        "ended_at_ms": 1790447502880,
+        "elapsed_ms": 2765,
+        "tool": "run_full_tests"
+      },
+      "router": {
+        "started_at_ms": 1790447502882,
+        "ended_at_ms": 1790447503180,
+        "elapsed_ms": 298,
+        "decision": {
+          "tool": "run_full_tests",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"run_full_tests\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "run_full_tests",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c16-8",
+      "family": "missing_user_intent",
+      "expected": "request_clarification",
+      "candidate_count": 16,
+      "input": {
+        "goal": "Implement the requested change to export behavior.",
+        "observation": "Request 16-8-d526129 says 'change exports to the new format' but never identifies a format. Both CSV and JSON are supported, no repository convention resolves the choice, and implementing either would be a materially different feature.",
+        "last_action": "search_docs",
+        "tools": [
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          },
+          {
+            "name": "search_docs",
+            "description": "Find reference documentation for an unfamiliar API",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_git_status",
+            "description": "List modified, staged and untracked repository paths",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_browser",
+            "description": "Read the current browser page and visible controls",
+            "category": "browser",
+            "risk": "low"
+          },
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 15,
+      "native": {
+        "started_at_ms": 1790447503466,
+        "ended_at_ms": 1790447507665,
+        "elapsed_ms": 4199,
+        "tool": "request_clarification"
+      },
+      "router": {
+        "started_at_ms": 1790447503181,
+        "ended_at_ms": 1790447503466,
+        "elapsed_ms": 285,
+        "decision": {
+          "tool": "request_clarification",
+          "confidence": 0.98,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"request_clarification\",\n  \"confidence\": 0.98,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "request_clarification",
+            "confidence": 0.98,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c4-1",
+      "family": "unread_known_file",
+      "expected": "read_file",
+      "candidate_count": 4,
+      "input": {
+        "goal": "Diagnose a parser failure before editing.",
+        "observation": "The stack trace identifies src/parser-4-1-d358572.ts. The failing line and surrounding source have not been read. Detailed test output is already available.",
+        "last_action": "inspect_test_output",
+        "tools": [
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 16,
+      "native": {
+        "started_at_ms": 1790447507668,
+        "ended_at_ms": 1790447514103,
+        "elapsed_ms": 6435,
+        "tool": "read_file"
+      },
+      "router": {
+        "started_at_ms": 1790447514106,
+        "ended_at_ms": 1790447514399,
+        "elapsed_ms": 293,
+        "decision": {
+          "tool": "read_file",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"read_file\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "read_file",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c4-5",
+      "family": "broader_regression",
+      "expected": "run_full_tests",
+      "candidate_count": 4,
+      "input": {
+        "goal": "Complete the required regression verification for a shared library change.",
+        "observation": "The focused unit tests and lint checks pass for core-4-5-d579915. The task explicitly requires the entire suite before completion; that suite has not yet run. No further edit is pending.",
+        "last_action": "run_focused_tests",
+        "tools": [
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 17,
+      "native": {
+        "started_at_ms": 1790447514764,
+        "ended_at_ms": 1790447517727,
+        "elapsed_ms": 2963,
+        "tool": "run_full_tests"
+      },
+      "router": {
+        "started_at_ms": 1790447514400,
+        "ended_at_ms": 1790447514764,
+        "elapsed_ms": 364,
+        "decision": {
+          "tool": "run_full_tests",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"run_full_tests\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "run_full_tests",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c8-7",
+      "family": "final_diff_review",
+      "expected": "inspect_diff",
+      "candidate_count": 8,
+      "input": {
+        "goal": "Finish the code change after the required final review.",
+        "observation": "Tests and lint passed after the final edit to worker-8-7-d554644. The complete pending diff has not been reviewed; that review is the sole remaining requirement. The list of modified paths is already known.",
+        "last_action": "run_linter",
+        "tools": [
+          {
+            "name": "inspect_git_status",
+            "description": "List modified, staged and untracked repository paths",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 18,
+      "native": {
+        "started_at_ms": 1790447517730,
+        "ended_at_ms": 1790447520653,
+        "elapsed_ms": 2923,
+        "tool": "inspect_diff"
+      },
+      "router": {
+        "started_at_ms": 1790447520656,
+        "ended_at_ms": 1790447521014,
+        "elapsed_ms": 358,
+        "decision": {
+          "tool": "inspect_diff",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"inspect_diff\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "inspect_diff",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c4-2",
+      "family": "unknown_implementation",
+      "expected": "search_code",
+      "candidate_count": 4,
+      "input": {
+        "goal": "Locate the implementation responsible for stale configuration reloads.",
+        "observation": "The only lead is the symbol refreshConfig4-2-d877234; its file is unknown. Repository structure is already listed. Locate its definition before diagnosing it.",
+        "last_action": "list_files",
+        "tools": [
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "search_docs",
+            "description": "Find reference documentation for an unfamiliar API",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 19,
+      "native": {
+        "started_at_ms": 1790447524146,
+        "ended_at_ms": 1790447526725,
+        "elapsed_ms": 2579,
+        "tool": "search_code"
+      },
+      "router": {
+        "started_at_ms": 1790447523806,
+        "ended_at_ms": 1790447524146,
+        "elapsed_ms": 340,
+        "decision": {
+          "tool": "search_code",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"search_code\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "search_code",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c16-5",
+      "family": "broader_regression",
+      "expected": "run_full_tests",
+      "candidate_count": 16,
+      "input": {
+        "goal": "Complete the required regression verification for a shared library change.",
+        "observation": "The focused unit tests and lint checks pass for core-16-5-d728073. The task explicitly requires the entire suite before completion; that suite has not yet run. No further edit is pending.",
+        "last_action": "run_focused_tests",
+        "tools": [
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "inspect_git_status",
+            "description": "List modified, staged and untracked repository paths",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_browser",
+            "description": "Read the current browser page and visible controls",
+            "category": "browser",
+            "risk": "low"
+          },
+          {
+            "name": "search_docs",
+            "description": "Find reference documentation for an unfamiliar API",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "request_clarification",
+            "description": "Ask the user to resolve missing intent that changes the next action",
+            "category": "general",
+            "risk": "low"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 20,
+      "native": {
+        "started_at_ms": 1790447527032,
+        "ended_at_ms": 1790447532250,
+        "elapsed_ms": 5218,
+        "tool": "run_full_tests"
+      },
+      "router": {
+        "started_at_ms": 1790447526729,
+        "ended_at_ms": 1790447527032,
+        "elapsed_ms": 303,
+        "decision": {
+          "tool": "run_full_tests",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"run_full_tests\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "run_full_tests",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c4-4",
+      "family": "first_verification",
+      "expected": "run_focused_tests",
+      "candidate_count": 4,
+      "input": {
+        "goal": "Verify the newly applied local parser correction.",
+        "observation": "A one-line fix was just applied to src/token-4-4-d599230.ts. Relevant unit tests are known and take seconds; the full suite takes 20 minutes. No tests have run since this change.",
+        "last_action": "apply_patch",
+        "tools": [
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 21,
+      "native": {
+        "started_at_ms": 1790447532253,
+        "ended_at_ms": 1790447535862,
+        "elapsed_ms": 3609,
+        "tool": "run_focused_tests"
+      },
+      "router": {
+        "started_at_ms": 1790447535865,
+        "ended_at_ms": 1790447536229,
+        "elapsed_ms": 364,
+        "decision": {
+          "tool": "run_focused_tests",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"run_focused_tests\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "run_focused_tests",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c8-1",
+      "family": "unread_known_file",
+      "expected": "read_file",
+      "candidate_count": 8,
+      "input": {
+        "goal": "Diagnose a parser failure before editing.",
+        "observation": "The stack trace identifies src/parser-8-1-d794226.ts. The failing line and surrounding source have not been read. Detailed test output is already available.",
+        "last_action": "inspect_test_output",
+        "tools": [
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_browser",
+            "description": "Read the current browser page and visible controls",
+            "category": "browser",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_test_output",
+            "description": "Read saved detailed results from a previous test run",
+            "category": "inspect",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "native_first",
+      "trial": 22,
+      "native": {
+        "started_at_ms": 1790447536230,
+        "ended_at_ms": 1790447538973,
+        "elapsed_ms": 2743,
+        "tool": "read_file"
+      },
+      "router": {
+        "started_at_ms": 1790447538974,
+        "ended_at_ms": 1790447539298,
+        "elapsed_ms": 324,
+        "decision": {
+          "tool": "read_file",
+          "confidence": 0.99,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"read_file\",\n  \"confidence\": 0.99,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "read_file",
+            "confidence": 0.99,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c8-6",
+      "family": "missing_lint",
+      "expected": "run_linter",
+      "candidate_count": 8,
+      "input": {
+        "goal": "Complete outstanding checks for the formatting cleanup.",
+        "observation": "All tests pass and the diff for formatter-8-6-d555985 has already been reviewed. The project requires a clean lint result; lint has not run. There is no recorded lint diagnostic to act on.",
+        "last_action": "inspect_diff",
+        "tools": [
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "click_element",
+            "description": "Activate a known control on the current browser page",
+            "category": "browser",
+            "risk": "medium"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "query_records",
+            "description": "Read records from an application database",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "run_linter",
+            "description": "Run static style and lint checks and obtain precise diagnostics",
+            "category": "verify",
+            "risk": "low"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 23,
+      "native": {
+        "started_at_ms": 1790447539582,
+        "ended_at_ms": 1790447542914,
+        "elapsed_ms": 3332,
+        "tool": "run_linter"
+      },
+      "router": {
+        "started_at_ms": 1790447539300,
+        "ended_at_ms": 1790447539582,
+        "elapsed_ms": 282,
+        "decision": {
+          "tool": "run_linter",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"run_linter\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "run_linter",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    },
+    {
+      "id": "c8-3",
+      "family": "ready_patch",
+      "expected": "apply_patch",
+      "candidate_count": 8,
+      "input": {
+        "goal": "Fix an off-by-one boundary in the range validator.",
+        "observation": "Source and failing test for src/range-8-3-d415560.ts were inspected. Diagnosis is complete: the guard incorrectly uses >= where the specified exclusive bound requires >. The exact replacement is known and edits are authorized.",
+        "last_action": "read_file",
+        "tools": [
+          {
+            "name": "list_files",
+            "description": "List repository paths and directory contents",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "inspect_diff",
+            "description": "Review all pending source changes before finishing",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "finish",
+            "description": "Return the completed result when requirements and verification are satisfied",
+            "category": "finish",
+            "risk": "low"
+          },
+          {
+            "name": "read_file",
+            "description": "Read the contents of a known repository file",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_full_tests",
+            "description": "Run the entire test suite for broader regression coverage",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "search_code",
+            "description": "Locate source symbols or text when the responsible file is unknown",
+            "category": "inspect",
+            "risk": "low"
+          },
+          {
+            "name": "run_focused_tests",
+            "description": "Run the relevant small test subset after a local change",
+            "category": "verify",
+            "risk": "low"
+          },
+          {
+            "name": "apply_patch",
+            "description": "Apply a specific source edit after the relevant code is understood",
+            "category": "mutate",
+            "risk": "medium"
+          }
+        ]
+      },
+      "order": "router_first",
+      "trial": 24,
+      "native": {
+        "started_at_ms": 1790447543272,
+        "ended_at_ms": 1790447548040,
+        "elapsed_ms": 4768,
+        "tool": "apply_patch"
+      },
+      "router": {
+        "started_at_ms": 1790447542918,
+        "ended_at_ms": 1790447543272,
+        "elapsed_ms": 354,
+        "decision": {
+          "tool": "apply_patch",
+          "confidence": 1,
+          "fallback": false,
+          "reason": null
+        },
+        "error": null,
+        "raw": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"tool\": \"apply_patch\",\n  \"confidence\": 1.0,\n  \"fallback\": false,\n  \"reason\": null\n}"
+            }
+          ],
+          "structuredContent": {
+            "tool": "apply_patch",
+            "confidence": 1,
+            "fallback": false,
+            "reason": null
+          },
+          "isError": false
+        }
+      }
+    }
+  ],
+  "recording_helper_source": "(async function submit(choice,received){\n  const records=load(\"decision_bench_records\"), cases=load(\"decision_bench_cases\");\n  async function routeOne(c){\n    const started=Date.now();let result,error=null;\n    try{result=await tools.mcp__harness_router__route(c.input);}catch(e){error=String(e);}\n    const ended=Date.now();\n    let decision=result?.structuredContent??null;\n    if(!decision&&result?.content){for(const block of result.content){if(block.type===\"text\"){try{decision=JSON.parse(block.text);break;}catch{}}}}\n    return {started_at_ms:started,ended_at_ms:ended,elapsed_ms:ended-started,decision,error,raw:result??null};\n  }\n  const active=load(\"decision_bench_active\");\n  if(active){\n    if(typeof choice!==\"string\"||!active.case.input.tools.some(t=>t.name===choice)) throw Error(\"Invalid choice\");\n    const native={started_at_ms:active.started,ended_at_ms:received,elapsed_ms:received-active.started,tool:choice};\n    store(\"decision_bench_active\",null);\n    const router=active.router??await routeOne(active.case);\n    records.push({...active.case,native,router});\n    store(\"decision_bench_records\",records);\n    store(\"decision_bench_index\",records.length);\n    if(records.length%6===0){\n      text({block_complete:records.length,total:cases.length,router_fallbacks:records.filter(r=>r.router.decision?.fallback).length,router_errors:records.filter(r=>r.router.error||r.router.raw?.isError).length});\n      return;\n    }\n  }else if(choice!==null){throw Error(\"No active trial\");}\n  const index=load(\"decision_bench_index\");\n  if(index>=cases.length){text({complete:true,trials:records.length});return;}\n  const c=cases[index];\n  const router=c.order===\"router_first\"?await routeOne(c):null;\n  const started=Date.now();\n  store(\"decision_bench_active\",{case:c,router,started});\n  text({trial:c.trial,total:cases.length,instruction:\"Choose the single best next tool. Record only its name through the submission helper; do not execute it.\",...c.input});\n})"
+}
+
