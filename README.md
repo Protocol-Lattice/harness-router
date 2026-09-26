@@ -51,13 +51,7 @@ The router is intentionally small:
 Requires **Python 3.11+**.
 
 ~~~bash
-pip install harness-router
-~~~
-
-For the native MCP server:
-
-~~~bash
-pip install "harness-router[mcp]"
+uv tool install --force --with 'mcp>=2,<3' 'git+https://github.com/Protocol-Lattice/harness-router.git@main'
 ~~~
 
 For development:
@@ -546,10 +540,10 @@ This keeps the routing layer provider-agnostic while <code>OpenRouterJevProvider
 For Codex and other MCP hosts, prefer the native MCP server over the routing-helper skill.
 It exposes two tools: fast `route` for ordinary ambiguity and bounded `route_mcts` for multi-step lookahead over a caller-supplied side-effect-free state graph. The Jev provider stays alive for the process lifetime so HTTP connections and the router cache are reused.
 
-Install the optional MCP support:
+Install the MCP server:
 
 ~~~bash
-pip install "harness-router[mcp]"
+uv tool install --force --with 'mcp>=2,<3' 'git+https://github.com/Protocol-Lattice/harness-router.git@main'
 export OPENROUTER_API_KEY="your-key"
 ~~~
 
