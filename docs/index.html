@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>harness-router — Jev tool routing for agentic harnesses</title>
-  <meta name="description" content="Framework-agnostic Jev tool routing for agentic harnesses. Route discrete tool choices with TypeSafeAI Jev, fall back to your planner when uncertain, and benchmark the full loop." />
+  <meta name="description" content="Framework-agnostic Jev tool routing for agentic harnesses. Route easy decisions fast, escalate ambiguous choices into bounded Monte Carlo Tree Search, and benchmark the full loop." />
   <meta name="theme-color" content="#0a0a0a" />
   <link rel="canonical" href="https://protocol-lattice.github.io/harness-router/" />
 
@@ -523,6 +523,152 @@
       line-height: 1.5;
     }
 
+    .mcts-grid {
+      display: grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .mcts-panel,
+    .mcts-tree {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+      padding: 26px;
+    }
+
+    .mcts-panel h3,
+    .mcts-tree h3 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      letter-spacing: -.035em;
+    }
+
+    .mcts-panel > p,
+    .mcts-tree > p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .mcts-steps {
+      display: grid;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .mcts-step {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,.018);
+    }
+
+    .mcts-step-num {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(182,255,74,.35);
+      border-radius: 9px;
+      color: var(--accent);
+      background: var(--accent-soft);
+      font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    }
+
+    .mcts-step strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+
+    .mcts-step span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .tree-visual {
+      margin-top: 26px;
+      display: grid;
+      gap: 13px;
+      font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    }
+
+    .tree-row {
+      display: flex;
+      justify-content: center;
+      gap: 9px;
+      position: relative;
+    }
+
+    .tree-node {
+      min-width: 90px;
+      padding: 10px 11px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      text-align: center;
+      color: var(--muted);
+      background: #0d0d0d;
+    }
+
+    .tree-node.root,
+    .tree-node.best {
+      border-color: rgba(182,255,74,.42);
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .mcts-formula {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-left: 2px solid var(--accent);
+      background: rgba(182,255,74,.055);
+      color: #d9d9d2;
+      font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    }
+
+    .mcts-code {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: .72fr 1.28fr;
+      gap: 12px;
+    }
+
+    .mcts-note {
+      border: 1px solid rgba(182,255,74,.24);
+      border-radius: 18px;
+      background: var(--accent-soft);
+      padding: 26px;
+    }
+
+    .mcts-note strong {
+      display: block;
+      color: var(--accent);
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+    }
+
+    .mcts-note h3 {
+      margin: 18px 0 10px;
+      font-size: 26px;
+      letter-spacing: -.04em;
+    }
+
+    .mcts-note p {
+      margin: 0;
+      color: #d6d6d0;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
     .code-wrap {
       display: grid;
       grid-template-columns: .78fr 1.22fr;
@@ -611,6 +757,8 @@
       .flow-step { min-height: auto; }
       .flow-step h3 { margin-top: 26px; }
       .flow-step::after { content: "↓"; top: auto; right: 50%; bottom: -18px; }
+      .mcts-grid,
+      .mcts-code { grid-template-columns: 1fr; }
       .code-wrap { grid-template-columns: 1fr; }
     }
 
@@ -648,6 +796,7 @@
       <div class="nav-links">
         <a href="#benchmark">Benchmark</a>
         <a href="#architecture">Architecture</a>
+        <a href="#mcts">MCTS</a>
         <a href="#quickstart">Quick start</a>
         <a class="github-pill" href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">
           GitHub <span id="stars"></span>
@@ -837,14 +986,144 @@
           </div>
           <div class="flow-step">
             <div class="flow-num">04</div>
-            <h3>Planner fallback</h3>
-            <p>Uncertain, ambiguous, or policy-sensitive decisions stay with the main planner.</p>
+            <h3>Escalate intelligently</h3>
+            <p>Ambiguous choices can enter bounded MCTS search or fall back to the main planner.</p>
           </div>
           <div class="flow-step">
             <div class="flow-num">05</div>
             <h3>Your executor runs</h3>
             <p>Authorization and execution remain separate. Confidence is never permission.</p>
           </div>
+        </div>
+      </section>
+
+      <section id="mcts">
+        <div class="section-head">
+          <div>
+            <div class="kicker">Experimental search strategy</div>
+            <h2>When one choice is not enough, search the next few.</h2>
+          </div>
+          <p class="section-copy">
+            Jev is strongest as a fast System-1 selector. For ambiguous states, use it to seed
+            a small Monte Carlo Tree Search instead of asking the main model to repeatedly
+            reconsider the entire tool registry. Search a bounded action tree, choose the
+            best first move, execute exactly one tool, then re-plan from fresh state.
+          </p>
+        </div>
+
+        <div class="mcts-grid">
+          <article class="mcts-panel">
+            <h3>Jev-seeded MCTS</h3>
+            <p>
+              Keep the tree narrow and cheap. Candidate actions come from Jev probabilities;
+              rollouts evaluate short tool sequences against progress, verification, cost, and risk.
+            </p>
+
+            <div class="mcts-steps">
+              <div class="mcts-step">
+                <div class="mcts-step-num">01</div>
+                <div>
+                  <strong>Seed top-k actions</strong>
+                  <span>Use Jev probabilities as priors instead of expanding every available tool.</span>
+                </div>
+              </div>
+              <div class="mcts-step">
+                <div class="mcts-step-num">02</div>
+                <div>
+                  <strong>Select + expand</strong>
+                  <span>Use UCB/PUCT to balance high-value branches with under-explored alternatives.</span>
+                </div>
+              </div>
+              <div class="mcts-step">
+                <div class="mcts-step-num">03</div>
+                <div>
+                  <strong>Run bounded rollouts</strong>
+                  <span>Search only a few actions deep. Prefer dry-run state transitions when tools mutate state.</span>
+                </div>
+              </div>
+              <div class="mcts-step">
+                <div class="mcts-step-num">04</div>
+                <div>
+                  <strong>Backpropagate reward</strong>
+                  <span>Score goal progress and verification positively; subtract latency, tokens, risk, and failed actions.</span>
+                </div>
+              </div>
+              <div class="mcts-step">
+                <div class="mcts-step-num">05</div>
+                <div>
+                  <strong>Execute one action</strong>
+                  <span>Commit only the best root action, observe the real result, discard the stale tree, and search again.</span>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="mcts-tree">
+            <h3>Search a tiny horizon.</h3>
+            <p>
+              The goal is not exhaustive planning. It is a bounded second opinion for states
+              where a single routing decision has low confidence or several plausible continuations.
+            </p>
+
+            <div class="tree-visual" aria-label="Monte Carlo tree search example">
+              <div class="tree-row">
+                <div class="tree-node root">state<br>root</div>
+              </div>
+              <div class="tree-row">
+                <div class="tree-node best">read_file<br>π .46</div>
+                <div class="tree-node">search<br>π .31</div>
+                <div class="tree-node">run_tests<br>π .23</div>
+              </div>
+              <div class="tree-row">
+                <div class="tree-node best">patch<br>Q .84</div>
+                <div class="tree-node">inspect<br>Q .62</div>
+                <div class="tree-node">grep<br>Q .58</div>
+              </div>
+            </div>
+
+            <div class="mcts-formula">
+              PUCT ≈ Q(s,a) + c · P(a|s) · √N(s) / (1 + N(s,a))
+            </div>
+          </article>
+        </div>
+
+        <div class="mcts-code">
+          <aside class="mcts-note">
+            <strong>Decision policy</strong>
+            <h3>Fast path first. Search only on uncertainty.</h3>
+            <p>
+              A practical trigger is confidence below your routing threshold, a small margin
+              between the top two actions, or a high-impact decision. MCTS should be an escalation
+              path, not the default for every tool call.
+            </p>
+          </aside>
+
+          <pre><code><span class="code-accent">async def</span> choose_next_action(state, tools):
+    ranked = <span class="code-accent">await</span> jev.rank(state, tools)
+
+    <span class="code-accent">if</span> ranked.confidence &gt;= FAST_PATH_THRESHOLD:
+        <span class="code-accent">return</span> ranked.best
+
+    root = Node(state, priors=ranked.top_k(4))
+
+    <span class="code-accent">for</span> _ <span class="code-accent">in</span> range(32):
+        leaf = select_with_puct(root)
+        child = expand_one(leaf)
+
+        reward = <span class="code-accent">await</span> rollout(
+            child,
+            depth=3,
+            reward=lambda r: (
+                2.0 * r.verified_progress
+                - 0.4 * r.cost
+                - 1.2 * r.risk
+                - 1.0 * r.failure
+            ),
+        )
+        backpropagate(child, reward)
+
+    <span class="code-accent">return</span> root.best_child().action
+    # execute ONE real action, observe, then rebuild</code></pre>
         </div>
       </section>
 
