@@ -37,7 +37,7 @@ The router is intentionally small:
 - optional bounded Monte Carlo Tree Search (MCTS) for multi-step lookahead
 - confidence-aware decisions
 - MCP and generic tool adapters
-- native, token-light MCP <code>route</code> server over stdio
+- native MCP server over stdio with fast <code>route</code> and bounded <code>route_mcts</code>
 - conservative risk metadata
 - optional loop detection for long-running harnesses
 - no required MCP SDK dependency in the core install
@@ -544,8 +544,7 @@ This keeps the routing layer provider-agnostic while <code>OpenRouterJevProvider
 ## Native MCP server
 
 For Codex and other MCP hosts, prefer the native MCP server over the routing-helper skill.
-It exposes exactly one tool, `route`, and keeps the Jev provider alive for the process
-lifetime so HTTP connections and the router cache are reused.
+It exposes two tools: fast `route` for ordinary ambiguity and bounded `route_mcts` for multi-step lookahead over a caller-supplied side-effect-free state graph. The Jev provider stays alive for the process lifetime so HTTP connections and the router cache are reused.
 
 Install the optional MCP support:
 
@@ -575,11 +574,13 @@ The MCP tool accepts a compact payload:
 }
 ~~~
 
-The response intentionally omits the full probability map:
+The fast `route` response intentionally omits the full probability map:
 
 ~~~json
 {"tool":"read_file","confidence":0.93,"fallback":false,"reason":null}
 ~~~
+
+MCTS is available through `route_mcts`. It does **not** execute real tools during search. The caller supplies predicted states, available tools, transitions, rewards, and heuristic state values. By default use about 32 simulations and depth 3; Jev may be used once as a root policy prior, while the remaining simulations stay local.
 
 For Codex, add the stdio server to `~/.codex/config.toml`:
 
