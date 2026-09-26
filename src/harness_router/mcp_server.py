@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from mcp.server.mcpserver import Context, MCPServer
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import OpenRouterConfig, RoutingConfig
 from .errors import RouterConfigurationError
@@ -47,7 +47,7 @@ class MCTSState(BaseModel):
     observation: str | None = None
     last_action: str | None = None
     value: float = 0.0
-    tools: list[RouteCandidate] = []
+    tools: list[RouteCandidate] = Field(default_factory=list)
 
 
 class MCTSTransition(BaseModel):
@@ -69,7 +69,7 @@ class MCTSRouteResult(BaseModel):
     confidence: float
     fallback: bool
     reason: str | None = None
-    principal_variation: list[str] = []
+    principal_variation: list[str] = Field(default_factory=list)
     simulations: int = 0
     policy_evaluations: int = 0
 
