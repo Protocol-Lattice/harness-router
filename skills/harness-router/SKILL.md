@@ -7,7 +7,7 @@ description: Use Protocol Lattice harness-router/Jev only when the user explicit
 
 Use this skill as a **rare ambiguity resolver**, not as a per-step router.
 
-If the native MCP tool `route` from the `harness-router` MCP server is available, use it directly. Do not invoke the Python helper script in that case.
+If the native MCP tools from the `harness-router` server are available, prefer them directly. Use `route` for ordinary ambiguous closed choices. Use `route_mcts` only when multi-step consequences matter and a side-effect-free predicted state graph is already available. Do not invoke the Python helper script when MCP is available.
 
 ## Fast path
 
@@ -52,7 +52,15 @@ Read `OPENROUTER_API_KEY` only from the environment. Never print, inspect, echo,
 
 ## MCTS
 
-Do not invoke MCTS from this skill during normal Codex work. MCTS is for native/runtime integrations with a side-effect-free simulator and bounded policy calls.
+Do not invoke MCTS during normal linear Codex work.
+
+The native MCP server exposes `route_mcts`. Use it only when:
+- the best first action depends on likely downstream consequences
+- a side-effect-free predicted state graph is available
+- real tools are not executed during search
+- bounded search is sufficient
+
+Prefer `simulations=32`, `max_depth=3`, and at most one Jev prior evaluation. Execute only the first selected real action after search. The principal variation is a prediction, not authorization to execute the whole sequence.
 
 ## Details
 
