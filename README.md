@@ -559,6 +559,29 @@ python skills/harness-router/scripts/route.py \
   ]'
 ~~~
 
+## Minimal OpenRouter free-model agent loop
+
+For a smaller end-to-end example focused on the core agent loop, use:
+
+~~~text
+examples/openrouter_free_agent_loop.py
+~~~
+
+It uses `openrouter/free` as the planner by default and `harness-router`/Jev for compact
+tool selection. The loop keeps obvious transitions local (for example, edit -> test),
+falls back to the planner when Jev is uncertain, and defaults to a temporary workspace copy.
+
+~~~bash
+export OPENROUTER_API_KEY="your-key"
+
+uv run python examples/openrouter_free_agent_loop.py \
+  "Fix the failing parser test" \
+  --workspace .
+~~~
+
+Pass `--apply` to modify the real workspace, or choose a specific free OpenRouter model
+with `--model` / `OPENROUTER_MODEL`.
+
 ## OpenRouter coding-agent example
 
 A runnable local coding-agent example is available at:
