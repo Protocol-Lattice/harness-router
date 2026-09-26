@@ -132,8 +132,8 @@ class _GraphEnvironment:
     ) -> None:
         if not states:
             raise ValueError("states must not be empty")
-        if len(states) > 256:
-            raise ValueError("states must contain at most 256 entries")
+        if len(states) > 1024:
+            raise ValueError("states must contain at most 1024 entries")
         if len(transitions) > 1024:
             raise ValueError("transitions must contain at most 1024 entries")
 
@@ -279,8 +279,8 @@ def create_mcp_server(*, router: JevToolRouter | None = None) -> MCPServer[Serve
     ) -> MCTSRouteResult:
         """Search a supplied side-effect-free state graph and select only the first tool."""
 
-        if simulations < 1 or simulations > 256:
-            raise ValueError("simulations must be between 1 and 256")
+        if simulations < 1 or simulations > 4096:
+            raise ValueError("simulations must be between 1 and 4096")
         if max_depth < 1 or max_depth > 8:
             raise ValueError("max_depth must be between 1 and 8")
 
