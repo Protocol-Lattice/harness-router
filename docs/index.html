@@ -404,9 +404,14 @@
 
     .decision-card.active b span:last-child { color: var(--pink); }
 
+    .benchmark-intro { grid-column: 2 / -1; }
+    .benchmark-intro .story-copy { max-width: 720px; margin-bottom: 0; }
+
     .benchmark-panel {
+      grid-column: 2 / -1;
+      min-width: 0;
       border: 1px solid var(--line);
-      border-radius: 11px;
+      border-radius: 12px;
       overflow: hidden;
       background: var(--panel-strong);
     }
@@ -415,14 +420,10 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 20px;
-      padding: 7px 9px;
-      border: 1px solid rgba(255,66,190,.3);
-      border-radius: 999px;
-      background: var(--pink-soft);
+      margin-bottom: 22px;
       color: var(--pink);
-      font: 9px/1 var(--mono);
-      letter-spacing: .12em;
+      font: 10px/1.5 var(--mono);
+      letter-spacing: .08em;
       text-transform: uppercase;
     }
 
@@ -434,91 +435,202 @@
       background: currentColor;
     }
 
-    .bench-chart {
-      margin: 0;
-      padding: 22px 20px;
+    .bench-chart { margin: 0; }
+
+    .bench-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--line);
     }
 
-    .bench-chart figcaption {
-      color: var(--text);
-      font: 11px/1.5 var(--mono);
-    }
+    .bench-toolbar h3 { margin: 0; font: 500 14px/1.5 var(--mono); }
 
     .bench-chart-unit {
-      margin: 6px 0 20px;
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .bench-controls {
+      display: flex;
+      gap: 3px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(0,0,0,.18);
+    }
+
+    .bench-controls button {
+      padding: 8px 13px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--muted);
+      font: 11px/1.3 var(--mono);
+      cursor: pointer;
+      transition: color .15s ease, background .15s ease;
+    }
+
+    .bench-controls button:hover { color: var(--text); }
+
+    .bench-controls button[aria-pressed="true"] {
+      background: rgba(255,255,255,.09);
+      color: var(--text);
+    }
+
+    .bench-controls button:focus-visible,
+    .bench-details summary:focus-visible {
+      outline: 2px solid var(--pink);
+      outline-offset: 3px;
+    }
+
+    .bench-view[hidden] { display: none; }
+
+    .bench-experiment {
+      display: grid;
+      grid-template-columns: 190px minmax(0, 1fr);
+      gap: 28px;
+      padding: 28px;
+    }
+
+    .bench-experiment + .bench-experiment { border-top: 1px solid var(--line-soft); }
+
+    .bench-experiment h4 {
+      margin: 0;
+      font: 500 14px/1.5 var(--mono);
+    }
+
+    .bench-experiment-kind {
+      margin: 4px 0 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .bench-speed {
+      display: block;
+      color: var(--pink);
+      font: 500 34px/1 var(--sans);
+      letter-spacing: -.05em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .bench-speed-label {
+      display: block;
+      margin-top: 6px;
       color: var(--muted);
       font-size: 11px;
       line-height: 1.5;
     }
 
-    .bench-metric {
-      margin-top: 20px;
-      padding-top: 18px;
-      border-top: 1px solid var(--line-soft);
-    }
-
-    .bench-metric h3 {
-      margin: 0 0 14px;
-      font: 500 13px/1.5 var(--mono);
-    }
-
-    .bench-bar + .bench-bar { margin-top: 12px; }
+    .bench-bar + .bench-bar { margin-top: 16px; }
 
     .bench-bar-label {
       display: flex;
-      flex-wrap: wrap;
       align-items: baseline;
       justify-content: space-between;
-      gap: 4px 12px;
-      margin-bottom: 7px;
+      gap: 12px;
+      margin-bottom: 8px;
       color: var(--muted);
-      font-size: 11px;
+      font-size: 12px;
       line-height: 1.5;
     }
 
     .bench-bar-label strong {
+      flex-shrink: 0;
       color: var(--text);
-      font: 500 11px/1.5 var(--mono);
+      font: 500 12px/1.5 var(--mono);
       font-variant-numeric: tabular-nums;
     }
 
     .bench-track {
-      height: 10px;
-      background: rgba(255,255,255,.05);
+      height: 9px;
+      overflow: hidden;
+      border-radius: 2px;
+      background: rgba(255,255,255,.035);
     }
 
     .bench-fill {
-      width: calc(var(--latency) / 7000 * 100%);
+      width: calc(var(--latency) / 10000 * 100%);
       height: 100%;
-      background: #b4adbb;
+      background: #a39caa;
     }
 
     .bench-bar.router .bench-fill { background: var(--pink); }
     .bench-bar.router .bench-bar-label strong { color: var(--pink); }
 
+    .bench-quality {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px 10px;
+      margin: 16px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .bench-quality strong { color: var(--text); font-weight: 500; }
+
+    .bench-context {
+      margin: 0;
+      padding: 16px 28px;
+      border-top: 1px solid var(--line-soft);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.7;
+    }
+
+    .bench-details { border-top: 1px solid var(--line); }
+
+    .bench-details summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 28px;
+      color: var(--text);
+      font: 11px/1.5 var(--mono);
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .bench-details summary::-webkit-details-marker { display: none; }
+    .bench-details summary::after { content: "+"; color: var(--muted); font-size: 17px; }
+    .bench-details[open] summary::after { content: "−"; }
+
+    .bench-methodology {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px 32px;
+      padding: 0 28px 26px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .bench-methodology h4 {
+      margin: 0 0 8px;
+      color: var(--text);
+      font: 500 12px/1.5 var(--mono);
+    }
+
+    .bench-methodology p { margin: 0; }
+
     .bench-links {
       display: flex;
       flex-wrap: wrap;
-      gap: 12px 24px;
-      margin-top: 24px;
-      font: 12px/1.5 var(--mono);
+      gap: 6px 20px;
+      margin-top: 12px;
+      font: 11px/1.5 var(--mono);
     }
 
-    .bench-links a {
-      text-decoration: underline;
-      text-underline-offset: 4px;
-    }
-
+    .bench-links a { text-decoration: underline; text-underline-offset: 4px; }
     .bench-links a:hover { color: var(--pink); }
-
-    .bench-note {
-      padding: 18px 20px;
-      border-top: 1px solid rgba(255,66,190,.22);
-      background: var(--pink-soft);
-      color: #cfc8d2;
-      font-size: 12px;
-      line-height: 1.6;
-    }
 
     .mcts-tree {
       min-height: 365px;
@@ -898,11 +1010,30 @@
         line-height: 1.7;
       }
 
-      .bench-chart { padding: 20px 16px; }
+      .benchmark-intro { grid-column: 1 / -1; }
+      .bench-toolbar { padding: 20px; }
+      .bench-controls { width: 100%; }
+      .bench-controls button { flex: 1; padding: 10px 12px; }
 
-      .bench-note {
-        padding: 16px;
+      .bench-experiment {
+        grid-template-columns: 1fr;
+        gap: 18px;
+        padding: 22px 20px;
       }
+
+      .bench-experiment > :first-child {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: baseline;
+        column-gap: 12px;
+      }
+
+      .bench-experiment-kind { grid-column: 1; margin-bottom: 0; }
+      .bench-speed { grid-column: 2; grid-row: 1; font-size: 26px; }
+      .bench-speed-label { grid-column: 2; grid-row: 2; max-width: 110px; margin-top: 4px; text-align: right; }
+      .bench-context { padding: 16px 20px; }
+      .bench-details summary { padding: 18px 20px; }
+      .bench-methodology { grid-template-columns: 1fr; padding: 0 20px 22px; }
 
       .mcts-tree {
         min-height: 320px;
@@ -1199,77 +1330,199 @@ tool_timeout_sec = 5
 
       <section class="story" id="benchmark">
         <div class="story-no">04</div>
-        <div>
+        <div class="benchmark-intro">
           <div class="benchmark-badge">Decision latency · 26 Sep 2026</div>
           <h2>Time to choose <em>a tool.</em></h2>
           <p class="story-copy">
-            <strong>24 paired choices</strong> compared the installed harness-router MCP tool with Codex
-            selecting a tool name. Eight scenarios used 4, 8, and 16 candidate tools, with shuffled
-            candidate and case order. Timing stopped at selection; the chosen tools were never executed.
+            Two experiments. <strong>24 paired decisions each.</strong> Four, eight, or sixteen candidates.
+            Timing stopped at the choice; selected tools were never executed.
           </p>
-          <p class="story-copy">
-            This was a small exploratory run in one existing Codex conversation, using scenarios
-            authored by Codex. The baseline submitted names only, so it approximates the selection
-            part of normal tool calling. No Python scripts or OpenAI API calls were used.
-          </p>
-          <div class="bench-links">
-            <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/decision-latency-2026-09-26.md">Full report ↗</a>
-            <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/decision-latency-2026-09-26.json">Raw timings ↗</a>
-          </div>
         </div>
         <div class="benchmark-panel">
-          <figure class="bench-chart" aria-labelledby="bench-chart-title" aria-describedby="bench-chart-unit">
-            <figcaption id="bench-chart-title">Observed time per choice</figcaption>
-            <p class="bench-chart-unit" id="bench-chart-unit">Milliseconds · shared scale · lower is faster</p>
-            <div class="bench-metric" role="group" aria-labelledby="bench-mean">
-              <h3 id="bench-mean">Mean</h3>
-              <div class="bench-bar" style="--latency: 3842.1">
-                <div class="bench-bar-label"><span>Codex · name only</span><strong>3,842.1 ms</strong></div>
-                <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+          <figure class="bench-chart" aria-labelledby="bench-chart-title" aria-describedby="bench-chart-unit bench-context">
+            <figcaption class="bench-toolbar">
+              <div>
+                <h3 id="bench-chart-title">Observed decision time</h3>
+                <p class="bench-chart-unit" id="bench-chart-unit">Milliseconds · same scale · lower is faster</p>
               </div>
-              <div class="bench-bar router" style="--latency: 404.5">
-                <div class="bench-bar-label"><span>Harness-router · MCP</span><strong>404.5 ms</strong></div>
-                <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+              <div class="bench-controls" role="group" aria-label="Latency statistic">
+                <button type="button" data-bench-metric="mean" aria-pressed="true" aria-controls="bench-mean-view">Mean</button>
+                <button type="button" data-bench-metric="median" aria-pressed="false" aria-controls="bench-median-view">Median</button>
+                <button type="button" data-bench-metric="p95" aria-pressed="false" aria-controls="bench-p95-view">p95</button>
+              </div>
+            </figcaption>
+            <div class="bench-views">
+              <div class="bench-view" id="bench-mean-view" data-bench-view="mean" role="group" aria-label="Mean decision latency">
+                <section class="bench-experiment" aria-labelledby="bench-route-mean-title">
+                  <div>
+                    <h4 id="bench-route-mean-title"><code>route</code></h4>
+                    <p class="bench-experiment-kind">Ordinary tool choices</p>
+                    <strong class="bench-speed">9.5×</strong>
+                    <span class="bench-speed-label">faster · observed mean latency</span>
+                  </div>
+                  <div>
+                    <div class="bench-bar" style="--latency: 3842.1">
+                      <div class="bench-bar-label"><span>Codex</span><strong>3,842.1 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <div class="bench-bar router" style="--latency: 404.5">
+                      <div class="bench-bar-label"><span>Harness-router</span><strong>404.5 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <p class="bench-quality"><strong>24/24 choices match Codex</strong><span>Agreement only</span></p>
+                  </div>
+                </section>
+                <section class="bench-experiment" aria-labelledby="bench-route_mcts-mean-title">
+                  <div>
+                    <h4 id="bench-route_mcts-mean-title"><code>route_mcts</code></h4>
+                    <p class="bench-experiment-kind">Three-step reward trees</p>
+                    <strong class="bench-speed">16.7×</strong>
+                    <span class="bench-speed-label">faster · observed mean latency</span>
+                  </div>
+                  <div>
+                    <div class="bench-bar" style="--latency: 5950.5">
+                      <div class="bench-bar-label"><span>Codex</span><strong>5,950.5 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <div class="bench-bar router" style="--latency: 356.7">
+                      <div class="bench-bar-label"><span>Harness-router</span><strong>356.7 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <p class="bench-quality"><strong>11/24 optimal · 45.8%</strong><span>Codex: 24/24 · 100%</span></p>
+                  </div>
+                </section>
+              </div>
+              <div class="bench-view" id="bench-median-view" data-bench-view="median" role="group" aria-label="Median decision latency" hidden>
+                <section class="bench-experiment" aria-labelledby="bench-route-median-title">
+                  <div>
+                    <h4 id="bench-route-median-title"><code>route</code></h4>
+                    <p class="bench-experiment-kind">Ordinary tool choices</p>
+                    <strong class="bench-speed">10.2×</strong>
+                    <span class="bench-speed-label">faster · observed median latency</span>
+                  </div>
+                  <div>
+                    <div class="bench-bar" style="--latency: 3384">
+                      <div class="bench-bar-label"><span>Codex</span><strong>3,384 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <div class="bench-bar router" style="--latency: 332">
+                      <div class="bench-bar-label"><span>Harness-router</span><strong>332 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <p class="bench-quality"><strong>24/24 choices match Codex</strong><span>Agreement only</span></p>
+                  </div>
+                </section>
+                <section class="bench-experiment" aria-labelledby="bench-route_mcts-median-title">
+                  <div>
+                    <h4 id="bench-route_mcts-median-title"><code>route_mcts</code></h4>
+                    <p class="bench-experiment-kind">Three-step reward trees</p>
+                    <strong class="bench-speed">15.6×</strong>
+                    <span class="bench-speed-label">faster · observed median latency</span>
+                  </div>
+                  <div>
+                    <div class="bench-bar" style="--latency: 5199.5">
+                      <div class="bench-bar-label"><span>Codex</span><strong>5,199.5 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <div class="bench-bar router" style="--latency: 333.5">
+                      <div class="bench-bar-label"><span>Harness-router</span><strong>333.5 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <p class="bench-quality"><strong>11/24 optimal · 45.8%</strong><span>Codex: 24/24 · 100%</span></p>
+                  </div>
+                </section>
+              </div>
+              <div class="bench-view" id="bench-p95-view" data-bench-view="p95" role="group" aria-label="p95 decision latency" hidden>
+                <section class="bench-experiment" aria-labelledby="bench-route-p95-title">
+                  <div>
+                    <h4 id="bench-route-p95-title"><code>route</code></h4>
+                    <p class="bench-experiment-kind">Ordinary tool choices</p>
+                    <strong class="bench-speed">9.0×</strong>
+                    <span class="bench-speed-label">faster · observed p95 latency</span>
+                  </div>
+                  <div>
+                    <div class="bench-bar" style="--latency: 6435">
+                      <div class="bench-bar-label"><span>Codex</span><strong>6,435 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <div class="bench-bar router" style="--latency: 718">
+                      <div class="bench-bar-label"><span>Harness-router</span><strong>718 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <p class="bench-quality"><strong>24/24 choices match Codex</strong><span>Agreement only</span></p>
+                  </div>
+                </section>
+                <section class="bench-experiment" aria-labelledby="bench-route_mcts-p95-title">
+                  <div>
+                    <h4 id="bench-route_mcts-p95-title"><code>route_mcts</code></h4>
+                    <p class="bench-experiment-kind">Three-step reward trees</p>
+                    <strong class="bench-speed">15.8×</strong>
+                    <span class="bench-speed-label">faster · observed p95 latency</span>
+                  </div>
+                  <div>
+                    <div class="bench-bar" style="--latency: 8848">
+                      <div class="bench-bar-label"><span>Codex</span><strong>8,848 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <div class="bench-bar router" style="--latency: 560">
+                      <div class="bench-bar-label"><span>Harness-router</span><strong>560 ms</strong></div>
+                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
+                    </div>
+                    <p class="bench-quality"><strong>11/24 optimal · 45.8%</strong><span>Codex: 24/24 · 100%</span></p>
+                  </div>
+                </section>
               </div>
             </div>
-            <div class="bench-metric" role="group" aria-labelledby="bench-median">
-              <h3 id="bench-median">Median</h3>
-              <div class="bench-bar" style="--latency: 3384">
-                <div class="bench-bar-label"><span>Codex · name only</span><strong>3,384 ms</strong></div>
-                <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-              </div>
-              <div class="bench-bar router" style="--latency: 332">
-                <div class="bench-bar-label"><span>Harness-router · MCP</span><strong>332 ms</strong></div>
-                <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-              </div>
-            </div>
-            <div class="bench-metric" role="group" aria-labelledby="bench-p95">
-              <h3 id="bench-p95">p95</h3>
-              <div class="bench-bar" style="--latency: 6435">
-                <div class="bench-bar-label"><span>Codex · name only</span><strong>6,435 ms</strong></div>
-                <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-              </div>
-              <div class="bench-bar router" style="--latency: 718">
-                <div class="bench-bar-label"><span>Harness-router · MCP</span><strong>718 ms</strong></div>
-                <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-              </div>
-            </div>
+            <p class="bench-context" id="bench-context">
+              Each experiment has its own Codex baseline and different timing boundaries.
+              Ratios compare observed latency; MCTS did not achieve equal choice quality.
+            </p>
           </figure>
-          <div class="bench-note">
-            <strong>9.5× faster by observed mean latency.</strong>
-            3,842.1 ms for Codex ÷ 404.5 ms for harness-router.
-            This ratio compares the measured averages in this run.
-          </div>
-          <div class="bench-note">
-            <strong>24/24 matching choices.</strong> Zero router fallbacks or errors.
-            All measured samples are included. Agreement is a sanity check, not an independent quality score.
-          </div>
-          <div class="bench-note">
-            <strong>The timers cover different boundaries.</strong> Codex includes response generation,
-            host scheduling, and dispatch; the router includes MCP transport and the provider round trip.
-            These results describe observed selection latency. Pure reasoning speed and full task
-            completion time were not measured.
-          </div>
+          <details class="bench-details">
+            <summary>Methodology &amp; source data</summary>
+            <div class="bench-methodology">
+              <div>
+                <h4>What the clocks include</h4>
+                <p>
+                  Codex chose a name only; its timer includes response generation, host scheduling, and dispatch.
+                  Router timings include MCP transport and the provider round trip; MCTS also includes local search.
+                  Graph preparation is excluded. Pure reasoning time and task completion time were not measured.
+                </p>
+              </div>
+              <div>
+                <h4>How to read the results</h4>
+                <p>
+                  These exploratory runs used different workloads in an existing Codex conversation, with cases authored by Codex.
+                  They do not isolate the cost of MCTS over ordinary routing.
+                  Matching choices measure agreement; the MCTS test checks the highest-reward branch.
+                  No Python scripts or OpenAI API calls were used.
+                </p>
+              </div>
+              <div>
+                <h4><code>route</code> · 24 paired choices</h4>
+                <p>
+                  Ordinary tool selection with 4, 8, or 16 candidates. All measured samples are included.
+                  Zero router fallbacks or errors. One 695 ms warmup is excluded.
+                </p>
+                <div class="bench-links">
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/decision-latency-2026-09-26.md">Report ↗</a>
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/decision-latency-2026-09-26.json">Raw timings ↗</a>
+                </div>
+              </div>
+              <div>
+                <h4><code>route_mcts</code> · 24 paired trees</h4>
+                <p>
+                  32 simulations, depth 3, Jev prior enabled. Each response reported one policy evaluation.
+                  All 13 suboptimal choices are included. Zero final MCTS fallbacks or tool errors.
+                  One 8,370 ms warmup is excluded.
+                </p>
+                <div class="bench-links">
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/mcts-decision-latency-2026-09-26.md">MCTS report ↗</a>
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/mcts-decision-latency-2026-09-26.json">Raw timings ↗</a>
+                </div>
+              </div>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -1349,6 +1602,18 @@ codex mcp list</code>
         }
       })
       .catch(() => {});
+
+    document.querySelectorAll("[data-bench-metric]").forEach(button => {
+      button.addEventListener("click", () => {
+        const metric = button.dataset.benchMetric;
+        document.querySelectorAll("[data-bench-metric]").forEach(control => {
+          control.setAttribute("aria-pressed", String(control === button));
+        });
+        document.querySelectorAll("[data-bench-view]").forEach(view => {
+          view.hidden = view.dataset.benchView !== metric;
+        });
+      });
+    });
 
     async function copyText(text, button) {
       try {
