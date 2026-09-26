@@ -1,0 +1,685 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+from harness_router import (
+    ActionSummary,
+    HarnessState,
+    JevToolRouter,
+    OpenRouterConfig,
+    OpenRouterJevProvider,
+    RiskLevel,
+    RoutingConfig,
+    RoutingMode,
+    ToolDescriptor,
+)
+
+PLANNER_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_MODEL = "openrouter/free"
+MAX_ROUTER_CALLS = 2
+
+
+TOOLS: tuple[ToolDescriptor, ...] = (
+    ToolDescriptor(
+        name="list_files",
+        description="List repository files.",
+        category="inspect",
+        risk=RiskLevel.LOW,
+        schema={
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "additionalProperties": False,
+        },
+    ),
+    ToolDescriptor(
+        name="read_file",
+        description="Read one UTF-8 repository file.",
+        category="inspect",
+        risk=RiskLevel.LOW,
+        schema={
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolDescriptor(
+        name="search_code",
+        description="Search repository text for a literal query.",
+        category="inspect",
+        risk=RiskLevel.LOW,
+        schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "path": {"type": "string"},
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolDescriptor(
+        name="replace_text",
+        description="Replace one exact text fragment in one existing file.",
+        category="mutate",
+        risk=RiskLevel.MEDIUM,
+        schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "old": {"type": "string"},
+                "new": {"type": "string"},
+            },
+            "required": ["path", "old", "new"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolDescriptor(
+        name="write_file",
+        description="Create or replace one UTF-8 text file.",
+        category="mutate",
+        risk=RiskLevel.MEDIUM,
+        schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["path", "content"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolDescriptor(
+        name="run_tests",
+        description="Run the repository tests with python -m pytest -q.",
+        category="verify",
+        risk=RiskLevel.LOW,
+        schema={"type": "object", "properties": {}, "additionalProperties": False},
+    ),
+    ToolDescriptor(
+        name="finish",
+        description="Finish after the task is complete and tests pass.",
+        category="finish",
+        risk=RiskLevel.LOW,
+        schema={
+            "type": "object",
+            "properties": {"summary": {"type": "string"}},
+            "required": ["summary"],
+            "additionalProperties": False,
+        },
+    ),
+)
+
+
+@dataclass(slots=True)
+class AgentState:
+    goal: str
+    observation: str = "Start by inspecting the repository."
+    history: list[ActionSummary] = field(default_factory=list)
+    tests_passed: bool = False
+    finished: bool = False
+    final_summary: str = ""
+    router_enabled: bool = True
+    router_calls: int = 0
+
+
+class OpenRouterFreePlanner:
+    """Small planner that defaults to OpenRouter's free-model router."""
+
+    def __init__(self, api_key: str, model: str, timeout: float) -> None:
+        self.model = model
+        self.calls = 0
+        self.client = httpx.AsyncClient(
+            timeout=timeout,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+    async def aclose(self) -> None:
+        await self.client.aclose()
+
+    async def choose(
+        self,
+        state: AgentState,
+        tools: Sequence[ToolDescriptor],
+        *,
+        forced_tool: str | None = None,
+    ) -> tuple[str, dict[str, Any]]:
+        prompt = (
+            "Choose exactly one next coding-agent tool. Inspect before editing, prefer the "
+            "smallest correct edit, run tests after mutations, and only finish after tests pass. "
+            "Use native tool calling. If native tool calling is unavailable, return only JSON "
+            'in the form {"tool":"name","arguments":{...}}.\n\n'
+            f"GOAL:\n{state.goal}\n\n"
+            f"LATEST OBSERVATION:\n{state.observation[:8000]}\n\n"
+            f"RECENT ACTIONS:\n{_history_text(state.history)}"
+        )
+
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "temperature": 0,
+            "max_tokens": 4000,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are the planning model inside a coding-agent loop. "
+                        "Never invent file contents that have not been inspected."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "tools": [_native_tool(tool) for tool in tools],
+        }
+        if forced_tool is None:
+            payload["tool_choice"] = "required"
+        else:
+            payload["tool_choice"] = {
+                "type": "function",
+                "function": {"name": forced_tool},
+            }
+
+        self.calls += 1
+        response = await self.client.post(PLANNER_URL, json=payload)
+        if response.is_error:
+            raise RuntimeError(
+                f"OpenRouter planner failed ({response.status_code}): {response.text[:1200]}"
+            )
+
+        message = response.json()["choices"][0]["message"]
+        action = _parse_planner_message(message)
+        if action is None:
+            raise RuntimeError(
+                "OpenRouter planner did not return a usable tool call: "
+                + json.dumps(message, ensure_ascii=False, default=str)[:1200]
+            )
+
+        tool_name, arguments = action
+        if forced_tool is not None and tool_name != forced_tool:
+            raise RuntimeError(
+                f"planner returned {tool_name!r}, expected forced tool {forced_tool!r}"
+            )
+        return tool_name, arguments
+
+
+class Workspace:
+    """Tiny sandbox: default to a temporary copy, mutate the real repo only with --apply."""
+
+    def __init__(self, root: Path, *, apply: bool, test_timeout: float) -> None:
+        self.original_root = root.resolve()
+        self.test_timeout = test_timeout
+        self.changed_files: set[str] = set()
+        self._temp: tempfile.TemporaryDirectory[str] | None = None
+
+        if apply:
+            self.root = self.original_root
+        else:
+            self._temp = tempfile.TemporaryDirectory(prefix="harness-router-free-agent-")
+            self.root = Path(self._temp.name) / "workspace"
+            shutil.copytree(
+                self.original_root,
+                self.root,
+                ignore=shutil.ignore_patterns(
+                    ".git",
+                    ".venv",
+                    "venv",
+                    "__pycache__",
+                    ".pytest_cache",
+                    ".mypy_cache",
+                    ".ruff_cache",
+                    "node_modules",
+                ),
+            )
+            self.root = self.root.resolve()
+
+    def close(self) -> None:
+        if self._temp is not None:
+            self._temp.cleanup()
+
+    def execute(
+        self,
+        tool_name: str,
+        arguments: Mapping[str, Any],
+        state: AgentState,
+    ) -> str:
+        if tool_name == "list_files":
+            root = self._safe_path(_string(arguments, "path", default="."))
+            if not root.is_dir():
+                return "error: directory not found"
+            files = [
+                str(path.relative_to(self.root))
+                for path in sorted(root.rglob("*"))
+                if path.is_file() and not _ignored(path.relative_to(self.root))
+            ]
+            return "\n".join(files[:400]) or "(no files)"
+
+        if tool_name == "read_file":
+            path = self._safe_path(_string(arguments, "path"))
+            if not path.is_file():
+                return "error: file not found"
+            if path.stat().st_size > 200_000:
+                return "error: file too large for this example"
+            try:
+                return path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                return "error: file is not UTF-8 text"
+
+        if tool_name == "search_code":
+            query = _string(arguments, "query")
+            root = self._safe_path(_string(arguments, "path", default="."))
+            if not root.exists():
+                return "error: search path not found"
+            matches: list[str] = []
+            candidates = [root] if root.is_file() else root.rglob("*")
+            for path in candidates:
+                if not path.is_file() or _ignored(path.relative_to(self.root)):
+                    continue
+                if path.stat().st_size > 200_000:
+                    continue
+                try:
+                    content = path.read_text(encoding="utf-8")
+                except (UnicodeDecodeError, OSError):
+                    continue
+                for line_number, line in enumerate(content.splitlines(), start=1):
+                    if query in line:
+                        matches.append(
+                            f"{path.relative_to(self.root)}:{line_number}:{line[:240]}"
+                        )
+                        if len(matches) >= 80:
+                            return "\n".join(matches)
+            return "\n".join(matches) if matches else "no matches"
+
+        if tool_name == "replace_text":
+            path = self._safe_path(_string(arguments, "path"))
+            old = _string(arguments, "old")
+            new = _string(arguments, "new", allow_empty=True)
+            if not path.is_file():
+                return "error: target file not found"
+            content = path.read_text(encoding="utf-8")
+            count = content.count(old)
+            if count != 1:
+                return f"error: expected exactly one match, found {count}"
+            path.write_text(content.replace(old, new, 1), encoding="utf-8")
+            self.changed_files.add(str(path.relative_to(self.root)))
+            state.tests_passed = False
+            return f"updated {path.relative_to(self.root)}"
+
+        if tool_name == "write_file":
+            path = self._safe_path(_string(arguments, "path"))
+            content = _string(arguments, "content", allow_empty=True)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            self.changed_files.add(str(path.relative_to(self.root)))
+            state.tests_passed = False
+            return f"wrote {path.relative_to(self.root)}"
+
+        if tool_name == "run_tests":
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pytest", "-q"],
+                    cwd=self.root,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.test_timeout,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                state.tests_passed = False
+                return "tests failed: timeout"
+            output = (result.stdout + "\n" + result.stderr).strip()
+            state.tests_passed = result.returncode == 0
+            status = "tests passed" if state.tests_passed else f"tests failed ({result.returncode})"
+            return f"{status}\n{output[-8000:]}"
+
+        if tool_name == "finish":
+            if not state.tests_passed:
+                return "error: cannot finish before tests pass"
+            state.finished = True
+            state.final_summary = _string(arguments, "summary", default="Task complete.")
+            return "finished"
+
+        return f"error: unknown tool {tool_name}"
+
+    def _safe_path(self, value: str) -> Path:
+        relative = Path(value)
+        if relative.is_absolute():
+            raise ValueError("absolute paths are not allowed")
+        candidate = (self.root / relative).resolve()
+        if not candidate.is_relative_to(self.root):
+            raise ValueError("path escapes the workspace")
+        if ".git" in candidate.relative_to(self.root).parts:
+            raise ValueError(".git access is not allowed")
+        return candidate
+
+
+class CodingAgent:
+    def __init__(
+        self,
+        planner: OpenRouterFreePlanner,
+        router: JevToolRouter,
+        workspace: Workspace,
+        *,
+        max_steps: int,
+    ) -> None:
+        self.planner = planner
+        self.router = router
+        self.workspace = workspace
+        self.max_steps = max_steps
+
+    async def run(self, goal: str) -> AgentState:
+        state = AgentState(goal=goal)
+
+        for step in range(1, self.max_steps + 1):
+            if state.finished:
+                break
+
+            tool_name, arguments = await self._next_action(state)
+            descriptor = _tool_by_name(tool_name)
+            if descriptor is None:
+                state.observation = f"error: unknown tool selected: {tool_name}"
+                continue
+
+            try:
+                result = self.workspace.execute(tool_name, arguments, state)
+            except (OSError, ValueError) as exc:
+                result = f"error: {exc}"
+
+            state.observation = result
+            state.history.append(ActionSummary(tool=tool_name, outcome=result[:500]))
+
+            print(f"[step {step}] {tool_name}")
+            print(_one_line(result))
+
+        return state
+
+    async def _next_action(self, state: AgentState) -> tuple[str, dict[str, Any]]:
+        if state.history:
+            last_tool = state.history[-1].tool
+
+            # Keep obvious linear steps out of both Jev and the planner.
+            if last_tool in {"replace_text", "write_file"} and not state.observation.startswith(
+                "error:"
+            ):
+                return "run_tests", {}
+
+            if state.tests_passed and self.workspace.changed_files:
+                changed = ", ".join(sorted(self.workspace.changed_files))
+                return "finish", {"summary": f"Updated {changed}; tests passed."}
+
+        if state.router_enabled and state.router_calls < MAX_ROUTER_CALLS:
+            state.router_calls += 1
+            try:
+                decision = await self.router.route(_router_state(state), TOOLS)
+            except Exception as exc:
+                state.router_enabled = False
+                print(f"[router] error -> planner: {_one_line(str(exc))}")
+            else:
+                if decision.fallback or decision.tool is None:
+                    state.router_enabled = False
+                    print(f"[router] fallback -> planner: {decision.fallback_reason}")
+                else:
+                    descriptor = _tool_by_name(decision.tool)
+                    if descriptor is not None:
+                        print(
+                            f"[router] {descriptor.name} "
+                            f"(confidence={decision.confidence:.3f})"
+                        )
+                        if descriptor.schema.get("required"):
+                            arguments = await self.planner.choose(
+                                state,
+                                [descriptor],
+                                forced_tool=descriptor.name,
+                            )
+                            return arguments
+                        return descriptor.name, {}
+
+        return await self.planner.choose(state, TOOLS)
+
+
+def _router_state(state: AgentState) -> HarnessState:
+    return HarnessState(
+        goal=state.goal,
+        observation=state.observation[:800],
+        last_action=state.history[-1].tool if state.history else None,
+        recent_actions=state.history[-2:],
+        constraints=[
+            "Inspect before mutation",
+            "Run tests after mutation",
+        ],
+    )
+
+
+def _native_tool(tool: ToolDescriptor) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": dict(tool.schema),
+        },
+    }
+
+
+def _parse_planner_message(
+    message: Mapping[str, Any],
+) -> tuple[str, dict[str, Any]] | None:
+    tool_calls = message.get("tool_calls")
+    if isinstance(tool_calls, list):
+        for item in tool_calls:
+            if not isinstance(item, Mapping):
+                continue
+            function = item.get("function")
+            if not isinstance(function, Mapping):
+                continue
+            name = function.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+            arguments = _parse_arguments(function.get("arguments"))
+            if arguments is not None:
+                return name, arguments
+
+    function_call = message.get("function_call")
+    if isinstance(function_call, Mapping):
+        name = function_call.get("name")
+        if isinstance(name, str) and name:
+            arguments = _parse_arguments(function_call.get("arguments"))
+            if arguments is not None:
+                return name, arguments
+
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return None
+
+    text = content.strip()
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end <= start:
+            return None
+        try:
+            value = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return None
+
+    if not isinstance(value, Mapping):
+        return None
+    name = value.get("tool", value.get("name"))
+    if not isinstance(name, str) or not name:
+        return None
+    arguments = _parse_arguments(value.get("arguments", value.get("args", {})))
+    if arguments is None:
+        return None
+    return name, arguments
+
+
+def _parse_arguments(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        if not value.strip():
+            return {}
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _tool_by_name(name: str) -> ToolDescriptor | None:
+    return next((tool for tool in TOOLS if tool.name == name), None)
+
+
+def _history_text(history: Sequence[ActionSummary]) -> str:
+    if not history:
+        return "(empty)"
+    return "\n".join(
+        f"{item.tool}: {item.outcome[:800]}"
+        for item in history[-5:]
+    )
+
+
+def _string(
+    arguments: Mapping[str, Any],
+    key: str,
+    *,
+    default: str | None = None,
+    allow_empty: bool = False,
+) -> str:
+    value = arguments.get(key, default)
+    if not isinstance(value, str):
+        raise ValueError(f"argument {key!r} must be a string")
+    if not allow_empty and not value:
+        raise ValueError(f"argument {key!r} cannot be empty")
+    return value
+
+
+def _ignored(path: Path) -> bool:
+    ignored = {
+        ".git",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "node_modules",
+    }
+    return any(part in ignored for part in path.parts)
+
+
+def _one_line(value: str) -> str:
+    compact = " ".join(value.split())
+    return compact[:300] + ("..." if len(compact) > 300 else "")
+
+
+async def async_main(args: argparse.Namespace) -> int:
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        raise SystemExit("OPENROUTER_API_KEY is required")
+
+    workspace_path = Path(args.workspace).expanduser().resolve()
+    if not workspace_path.is_dir():
+        raise SystemExit(f"workspace does not exist: {workspace_path}")
+
+    planner = OpenRouterFreePlanner(
+        api_key=api_key,
+        model=args.model,
+        timeout=args.timeout,
+    )
+    provider = OpenRouterJevProvider.from_config(
+        OpenRouterConfig(timeout_seconds=min(args.timeout, 10.0))
+    )
+    router = JevToolRouter(
+        provider,
+        RoutingConfig(
+            mode=RoutingMode.HYBRID,
+            direct_execution_threshold=0.85,
+            fallback_threshold=0.60,
+        ),
+    )
+    workspace = Workspace(
+        workspace_path,
+        apply=args.apply,
+        test_timeout=args.test_timeout,
+    )
+    agent = CodingAgent(
+        planner,
+        router,
+        workspace,
+        max_steps=args.max_steps,
+    )
+
+    try:
+        state = await agent.run(args.task)
+    finally:
+        await planner.aclose()
+        await provider.aclose()
+        workspace.close()
+
+    print("\n=== result ===")
+    print(f"planner model: {args.model}")
+    print(f"planner calls: {planner.calls}")
+    print(f"router calls: {state.router_calls}")
+    print(f"tests passed: {state.tests_passed}")
+    print(f"finished: {state.finished}")
+    print(f"changed files: {', '.join(sorted(workspace.changed_files)) or '(none)'}")
+    print(f"mode: {'apply' if args.apply else 'temporary copy'}")
+    if state.final_summary:
+        print(f"summary: {state.final_summary}")
+
+    return 0 if state.finished else 1
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Minimal harness-router coding-agent loop with OpenRouter free models as planner."
+        )
+    )
+    parser.add_argument("task", help="coding task")
+    parser.add_argument("--workspace", default=".", help="repository root")
+    parser.add_argument(
+        "--model",
+        default=os.getenv("OPENROUTER_MODEL", DEFAULT_MODEL),
+        help="OpenRouter planner model; default: openrouter/free",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="modify the real workspace; default uses a temporary copy",
+    )
+    parser.add_argument("--max-steps", type=int, default=12)
+    parser.add_argument("--timeout", type=float, default=60.0)
+    parser.add_argument("--test-timeout", type=float, default=120.0)
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    if args.max_steps < 1:
+        raise SystemExit("--max-steps must be >= 1")
+    return asyncio.run(async_main(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
