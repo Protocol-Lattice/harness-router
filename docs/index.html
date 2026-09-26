@@ -1198,8 +1198,43 @@ use_jev_prior = true
             The harness-router server should expose both <code>route</code> and <code>route_mcts</code>. Running
             <code>harness-router-mcp</code> manually should appear to hang silently — that is normal:
             the stdio server is waiting for an MCP client. If the API key is missing, the server still
-            loads and <code>route</code> returns a controlled <code>missing_openrouter_api_key</code> fallback.
+            loads and <code>route</code> returns a controlled <code>missing_openrouter_api_key</code> fallback. <code>route_mcts</code> can still run locally with a uniform prior when no key is available.
           </p>
+        </div>
+
+        <div class="mcp-config">
+          <aside class="mcp-tip">
+            <strong>MCTS over MCP</strong>
+            <h3>Search locally. Execute only one real action.</h3>
+            <p>
+              <code>route_mcts</code> consumes an explicit side-effect-free state graph. It never
+              executes simulated tools. Keep the graph small, prefer 32–64 simulations and depth
+              2–4, and treat the principal variation as advisory. The server caps search at 256
+              simulations, depth 8, 256 states, 1024 transitions, and one Jev policy evaluation.
+            </p>
+          </aside>
+          <pre><code>{
+  "root_state": "root",
+  "states": [
+    {"id":"root","goal":"Choose","tools":[
+      {"name":"quick","risk":"low"},
+      {"name":"invest","risk":"low"}
+    ]},
+    {"id":"invested","goal":"Investigated","tools":[
+      {"name":"finish","risk":"low"}
+    ]},
+    {"id":"done","goal":"Done","tools":[]}
+  ],
+  "transitions": [
+    {"from_state":"root","tool":"invest",
+     "to_state":"invested","reward":0.05},
+    {"from_state":"invested","tool":"finish",
+     "to_state":"done","reward":1.0,"terminal":true}
+  ],
+  "simulations": 64,
+  "max_depth": 2,
+  "use_jev_prior": true
+}</code></pre>
         </div>
       </section>
 
