@@ -3,35 +3,33 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>harness-router — Jev tool routing for agentic harnesses</title>
-  <meta name="description" content="Framework-agnostic Jev tool routing for agentic harnesses. Route easy decisions fast, escalate ambiguous choices into bounded Monte Carlo Tree Search, and benchmark the full loop." />
-  <meta name="theme-color" content="#0a0a0a" />
+  <title>harness-router — the fast decision layer for agent harnesses</title>
+  <meta name="description" content="A tiny decision layer for agent harnesses. Use normal tool calling when the next step is obvious, Jev through native MCP when it is ambiguous, and bounded MCTS when downstream consequences matter." />
+  <meta name="theme-color" content="#0a0910" />
   <link rel="canonical" href="https://protocol-lattice.github.io/harness-router/" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://protocol-lattice.github.io/harness-router/" />
-  <meta property="og:title" content="harness-router — route tools fast, measure everything" />
-  <meta property="og:description" content="The first controlled Codex benchmark used 109.8% more full-system tokens with skill-driven Jev routing. The result is the point: benchmark the complete harness loop." />
-  <meta property="og:image" content="https://github.com/user-attachments/assets/6359a619-7548-4068-a494-43517e687d6b" />
+  <meta property="og:title" content="harness-router — stop reasoning about obvious tool calls" />
+  <meta property="og:description" content="Fast path first. Jev only for real ambiguity. Bounded MCTS when the next few moves matter." />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="harness-router — route tools fast, measure everything" />
-  <meta name="twitter:description" content="A tiny System-1 routing layer for agent harnesses, with an honest Jev vs normal tool-calling benchmark." />
-  <meta name="twitter:image" content="https://github.com/user-attachments/assets/6359a619-7548-4068-a494-43517e687d6b" />
 
   <style>
     :root {
-      --bg: #090909;
-      --panel: #111111;
-      --panel-2: #151515;
-      --line: #292929;
-      --text: #f4f4ef;
-      --muted: #a7a7a0;
-      --accent: #b6ff4a;
-      --accent-soft: rgba(182, 255, 74, .10);
-      --danger-soft: rgba(255, 255, 255, .055);
-      --max: 1120px;
+      --bg: #09080e;
+      --panel: rgba(255,255,255,.025);
+      --panel-strong: #100e16;
+      --line: rgba(255,255,255,.105);
+      --line-soft: rgba(255,255,255,.06);
+      --text: #f5f1ed;
+      --muted: #9e98a6;
+      --pink: #ff42be;
+      --pink-soft: rgba(255,66,190,.12);
+      --max: 1180px;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --serif: Iowan Old Style, Baskerville, "Times New Roman", Times, serif;
       color-scheme: dark;
-      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-synthesis: none;
     }
 
@@ -39,18 +37,24 @@
     html { scroll-behavior: smooth; }
     body {
       margin: 0;
-      background:
-        radial-gradient(circle at 76% 0%, rgba(182,255,74,.07), transparent 30rem),
-        var(--bg);
-      color: var(--text);
       min-height: 100vh;
+      color: var(--text);
+      background:
+        linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px),
+        radial-gradient(circle at 74% 16%, rgba(255,66,190,.10), transparent 28rem),
+        radial-gradient(circle at 18% 60%, rgba(140,99,255,.075), transparent 26rem),
+        var(--bg);
+      background-size: 46px 46px, 46px 46px, auto, auto, auto;
+      font-family: var(--sans);
     }
 
     a { color: inherit; text-decoration: none; }
-    button, a { -webkit-tap-highlight-color: transparent; }
+    button { font: inherit; }
+    code { font-family: var(--mono); }
 
     .shell {
-      width: min(calc(100% - 36px), var(--max));
+      width: min(calc(100% - 40px), var(--max));
       margin: 0 auto;
     }
 
@@ -60,1395 +64,902 @@
       align-items: center;
       justify-content: space-between;
       gap: 24px;
-      border-bottom: 1px solid var(--line);
+      border-bottom: 1px solid var(--line-soft);
     }
 
     .brand {
       display: inline-flex;
       align-items: center;
       gap: 11px;
-      font-size: 13px;
-      font-weight: 780;
-      letter-spacing: .12em;
+      font: 650 12px/1 var(--mono);
+      letter-spacing: .18em;
       text-transform: uppercase;
     }
 
-    .brand-mark {
-      display: grid;
-      place-items: center;
-      width: 29px;
-      height: 29px;
-      border: 1px solid var(--accent);
-      border-radius: 8px;
-      color: var(--accent);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      font-size: 11px;
-      letter-spacing: 0;
+    .brand-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--pink);
+      box-shadow: 0 0 20px rgba(255,66,190,.85);
     }
 
     .nav-links {
       display: flex;
       align-items: center;
-      gap: 20px;
+      gap: 22px;
       color: var(--muted);
-      font-size: 13px;
+      font: 12px/1 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .08em;
     }
 
     .nav-links a:hover { color: var(--text); }
 
-    .github-pill {
-      padding: 9px 12px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      color: var(--text);
-      background: rgba(255,255,255,.02);
-    }
-
     .hero {
-      padding: 108px 0 72px;
+      min-height: 760px;
+      padding: 84px 0 78px;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 340px;
+      grid-template-columns: 1fr 280px;
       gap: 70px;
       align-items: end;
+      border-bottom: 1px solid var(--line);
     }
 
-    .eyebrow {
-      display: inline-flex;
+    .section-id {
+      display: flex;
       align-items: center;
-      gap: 8px;
-      color: var(--accent);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      font-size: 12px;
-      letter-spacing: .08em;
+      gap: 15px;
+      color: var(--pink);
+      font: 11px/1 var(--mono);
+      letter-spacing: .16em;
       text-transform: uppercase;
     }
 
-    .eyebrow::before {
+    .section-id::after {
       content: "";
-      width: 7px;
-      height: 7px;
-      background: var(--accent);
-      border-radius: 50%;
-      box-shadow: 0 0 18px rgba(182,255,74,.7);
+      width: 64px;
+      height: 1px;
+      background: currentColor;
+      opacity: .55;
     }
 
     h1 {
-      margin: 23px 0 22px;
-      max-width: 790px;
-      font-size: clamp(52px, 8vw, 104px);
-      line-height: .91;
-      letter-spacing: -.07em;
-      font-weight: 850;
+      margin: 34px 0 26px;
+      max-width: 900px;
+      font: 500 clamp(64px, 9vw, 126px)/.86 var(--serif);
+      letter-spacing: -.062em;
     }
 
-    h1 span { color: var(--accent); }
+    h1 em {
+      color: var(--pink);
+      font-weight: 400;
+    }
 
     .hero-copy {
-      max-width: 700px;
+      max-width: 690px;
       margin: 0;
-      color: #c9c9c3;
-      font-size: clamp(17px, 2.2vw, 21px);
-      line-height: 1.55;
+      color: #bbb5bf;
+      font-size: clamp(17px, 2vw, 21px);
+      line-height: 1.58;
     }
 
-    .actions {
+    .hero-copy strong { color: var(--text); font-weight: 620; }
+
+    .install {
+      margin-top: 38px;
+      max-width: 760px;
+    }
+
+    .install-tabs {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 32px;
-    }
-
-    .button {
-      min-height: 47px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 9px;
-      padding: 0 17px;
-      border: 1px solid var(--line);
-      border-radius: 11px;
-      font-size: 14px;
-      font-weight: 700;
-      transition: transform .15s ease, border-color .15s ease, background .15s ease;
-      cursor: pointer;
-    }
-
-    .button:hover { transform: translateY(-1px); border-color: #4b4b4b; }
-    .button-primary {
-      color: #111;
-      background: var(--accent);
-      border-color: var(--accent);
-    }
-
-    .button-secondary { background: rgba(255,255,255,.025); }
-
-    .hero-card {
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.012));
-      padding: 22px;
-    }
-
-    .hero-card-top {
-      display: flex;
-      justify-content: space-between;
-      color: var(--muted);
-      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-    }
-
-    .decision {
-      margin: 48px 0 10px;
-      font: 800 46px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      letter-spacing: -.06em;
-    }
-
-    .confidence {
-      color: var(--accent);
-      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-    }
-
-    .mini-flow {
-      margin-top: 22px;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 7px;
-    }
-
-    .mini-flow div {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 9px 6px;
-      text-align: center;
-      color: var(--muted);
-      font: 11px/1.25 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-    }
-
-    .mini-flow .active {
-      border-color: rgba(182,255,74,.45);
-      color: var(--accent);
-      background: var(--accent-soft);
-    }
-
-    .proof-strip {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      overflow: hidden;
-      background: var(--panel);
-    }
-
-    .proof {
-      min-height: 94px;
-      padding: 19px 21px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      border-right: 1px solid var(--line);
-    }
-
-    .proof:last-child { border-right: 0; }
-    .proof strong { font-size: 17px; }
-    .proof span {
-      color: var(--muted);
-      font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      gap: 18px;
+      margin-bottom: 10px;
+      color: #706a74;
+      font: 10px/1 var(--mono);
       text-transform: uppercase;
-      letter-spacing: .06em;
+      letter-spacing: .16em;
     }
 
-    section { padding: 110px 0; }
+    .install-tabs span:first-child { color: var(--pink); }
 
-    .section-head {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 50px;
-      align-items: end;
-      margin-bottom: 42px;
+    .command {
+      width: 100%;
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 0 15px 0 18px;
+      background: rgba(11,9,15,.82);
+      box-shadow: inset 0 1px rgba(255,255,255,.025);
     }
 
-    .kicker {
-      color: var(--accent);
-      font: 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    .prompt {
+      flex: 0 0 auto;
+      color: var(--pink);
+      font: 700 13px/1 var(--mono);
+    }
+
+    .command code {
+      min-width: 0;
+      flex: 1;
+      overflow-x: auto;
+      white-space: nowrap;
+      scrollbar-width: none;
+      color: #ddd7df;
+      font-size: 12px;
+    }
+
+    .command code::-webkit-scrollbar { display: none; }
+
+    .copy {
+      flex: 0 0 auto;
+      border: 0;
+      border-left: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      padding: 9px 4px 9px 14px;
+      cursor: pointer;
+      font: 10px/1 var(--mono);
       letter-spacing: .08em;
       text-transform: uppercase;
     }
 
-    h2 {
-      margin: 10px 0 0;
-      max-width: 730px;
-      font-size: clamp(40px, 5.8vw, 72px);
-      line-height: .98;
+    .copy:hover { color: var(--text); }
+
+    .hero-aside {
+      align-self: center;
+      padding-left: 24px;
+      border-left: 1px solid var(--line);
+    }
+
+    .hero-aside .eyebrow {
+      color: #77717c;
+      font: 10px/1.4 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .14em;
+    }
+
+    .route-word {
+      margin: 20px 0 8px;
+      font: 600 30px/1 var(--mono);
       letter-spacing: -.055em;
     }
 
-    .section-copy {
+    .confidence {
+      color: var(--pink);
+      font: 11px/1.4 var(--mono);
+    }
+
+    .micro-flow {
+      margin-top: 28px;
+      display: grid;
+      gap: 9px;
+    }
+
+    .micro-flow div {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line-soft);
+      color: var(--muted);
+      font: 11px/1.2 var(--mono);
+    }
+
+    .micro-flow strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stat {
+      min-height: 124px;
+      padding: 27px 25px;
+      border-right: 1px solid var(--line);
+    }
+
+    .stat:last-child { border-right: 0; }
+
+    .stat strong {
+      display: block;
+      margin-bottom: 17px;
+      font: 500 29px/1 var(--serif);
+    }
+
+    .stat span {
+      color: var(--muted);
+      font: 10px/1.4 var(--mono);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .story {
+      min-height: 610px;
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr) minmax(330px, .78fr);
+      gap: 38px;
+      padding: 104px 0;
+      border-bottom: 1px solid var(--line);
+      align-items: start;
+    }
+
+    .story-no {
+      color: var(--pink);
+      font: 11px/1 var(--mono);
+      letter-spacing: .14em;
+    }
+
+    .story h2 {
+      margin: -13px 0 22px;
+      max-width: 700px;
+      font: 500 clamp(48px, 6.5vw, 82px)/.93 var(--serif);
+      letter-spacing: -.052em;
+    }
+
+    .story h2 em {
+      color: var(--pink);
+      font-weight: 400;
+    }
+
+    .story-copy {
+      max-width: 610px;
       color: var(--muted);
       font-size: 16px;
-      line-height: 1.65;
-      max-width: 520px;
-      justify-self: end;
+      line-height: 1.72;
     }
 
-    .benchmark {
-      position: relative;
-    }
+    .story-copy strong { color: #dcd6de; font-weight: 600; }
 
-    .benchmark::before {
-      content: "";
-      position: absolute;
-      inset: 0 0 auto;
-      border-top: 1px solid var(--line);
-    }
-
-    .benchmark-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
-    .metric-card {
-      min-height: 270px;
+    .terminal {
       border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 25px;
-      background: var(--panel);
+      border-radius: 11px;
+      overflow: hidden;
+      background: rgba(7,7,11,.83);
+      box-shadow: 0 25px 75px rgba(0,0,0,.24);
     }
 
-    .metric-card.router {
-      background:
-        linear-gradient(145deg, rgba(182,255,74,.08), transparent 54%),
-        var(--panel);
-    }
-
-    .metric-label {
-      color: var(--muted);
-      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      text-transform: uppercase;
-      letter-spacing: .07em;
-    }
-
-    .metric-big {
-      margin-top: 42px;
-      font-size: clamp(43px, 6vw, 68px);
-      line-height: 1;
-      font-weight: 850;
-      letter-spacing: -.06em;
-    }
-
-    .metric-big small {
-      margin-left: 5px;
-      color: var(--muted);
-      font-size: 15px;
-      letter-spacing: 0;
-      font-weight: 600;
-    }
-
-    .metric-sub {
-      margin-top: 13px;
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    .metric-card.router .metric-big { color: var(--accent); }
-
-    .delta-banner {
-      margin-top: 12px;
+    .terminal-top {
+      height: 42px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 24px;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 20px 23px;
-      background: var(--danger-soft);
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line-soft);
+      color: #6d6871;
+      font: 10px/1 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .1em;
     }
 
-    .delta-banner strong {
-      font-size: clamp(25px, 4vw, 38px);
-      letter-spacing: -.04em;
+    .terminal-dots {
+      display: flex;
+      gap: 5px;
     }
 
-    .delta-banner p {
+    .terminal-dots i {
+      width: 6px;
+      height: 6px;
+      display: block;
+      border-radius: 50%;
+      background: #39343d;
+    }
+
+    pre {
       margin: 0;
-      max-width: 570px;
+      overflow-x: auto;
+      padding: 22px;
+      color: #cbc5ce;
+      font: 11.5px/1.75 var(--mono);
+      white-space: pre;
+    }
+
+    .pink { color: var(--pink); }
+    .dim { color: #67616b; }
+
+    .decision-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .decision-card {
+      padding: 19px 20px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+
+    .decision-card.active {
+      border-color: rgba(255,66,190,.35);
+      background: var(--pink-soft);
+    }
+
+    .decision-card b {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      color: #ded8e0;
+      font: 500 12px/1.4 var(--mono);
+    }
+
+    .decision-card p {
+      margin: 9px 0 0;
       color: var(--muted);
-      font-size: 14px;
+      font-size: 13px;
       line-height: 1.55;
     }
 
-    .bars {
-      margin-top: 36px;
-      padding: 25px;
+    .decision-card.active b span:last-child { color: var(--pink); }
+
+    .benchmark-panel {
       border: 1px solid var(--line);
-      border-radius: 16px;
-      background: var(--panel);
-    }
-
-    .bar-row {
-      display: grid;
-      grid-template-columns: 175px 1fr 110px;
-      gap: 16px;
-      align-items: center;
-      margin-top: 16px;
-    }
-
-    .bar-row:first-child { margin-top: 0; }
-
-    .bar-label {
-      color: #d8d8d2;
-      font-size: 13px;
-    }
-
-    .track {
-      height: 12px;
-      border-radius: 999px;
-      background: #1e1e1e;
+      border-radius: 11px;
       overflow: hidden;
+      background: var(--panel-strong);
     }
 
-    .fill {
-      height: 100%;
-      border-radius: inherit;
-      background: #6b6b68;
+    .bench-row {
+      display: grid;
+      grid-template-columns: 1fr 112px;
+      gap: 20px;
+      padding: 19px 20px;
+      border-top: 1px solid var(--line-soft);
+      align-items: center;
     }
 
-    .fill.router { background: var(--accent); }
-    .bar-value {
+    .bench-row:first-child { border-top: 0; }
+
+    .bench-row span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .bench-row strong {
       text-align: right;
-      font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      color: var(--muted);
+      font: 500 19px/1 var(--serif);
     }
 
-    .detail-grid {
-      margin-top: 12px;
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-    }
+    .bench-row.warn strong { color: var(--pink); }
 
-    .detail {
-      padding: 18px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--panel);
-    }
-
-    .detail strong {
-      display: block;
-      font-size: 24px;
-      letter-spacing: -.04em;
-    }
-
-    .detail span {
-      display: block;
-      margin-top: 7px;
-      color: var(--muted);
+    .bench-note {
+      padding: 18px 20px;
+      border-top: 1px solid rgba(255,66,190,.22);
+      background: var(--pink-soft);
+      color: #cfc8d2;
       font-size: 12px;
-      line-height: 1.4;
-    }
-
-    .explain {
-      margin-top: 12px;
-      border: 1px solid rgba(182,255,74,.25);
-      border-radius: 16px;
-      padding: 24px;
-      background: var(--accent-soft);
-      display: grid;
-      grid-template-columns: 190px 1fr;
-      gap: 26px;
-    }
-
-    .explain strong {
-      color: var(--accent);
-      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      text-transform: uppercase;
-      letter-spacing: .07em;
-    }
-
-    .explain p {
-      margin: 0;
-      color: #d6d6d0;
-      line-height: 1.65;
-      font-size: 15px;
-    }
-
-    .benchmark-actions {
-      margin-top: 24px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-
-    .flow-grid {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 8px;
-      align-items: stretch;
-    }
-
-    .flow-step {
-      position: relative;
-      min-height: 165px;
-      padding: 19px;
-      border: 1px solid var(--line);
-      border-radius: 15px;
-      background: var(--panel);
-    }
-
-    .flow-step::after {
-      content: "→";
-      position: absolute;
-      top: 50%;
-      right: -17px;
-      color: #53534f;
-      z-index: 2;
-    }
-
-    .flow-step:last-child::after { display: none; }
-
-    .flow-num {
-      color: var(--accent);
-      font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-    }
-
-    .flow-step h3 {
-      margin: 42px 0 8px;
-      font-size: 16px;
-    }
-
-    .flow-step p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    .mcts-grid {
-      display: grid;
-      grid-template-columns: 1.05fr .95fr;
-      gap: 12px;
-      align-items: stretch;
-    }
-
-    .mcts-panel,
-    .mcts-tree {
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      background: var(--panel);
-      padding: 26px;
-    }
-
-    .mcts-panel h3,
-    .mcts-tree h3 {
-      margin: 0 0 10px;
-      font-size: 24px;
-      letter-spacing: -.035em;
-    }
-
-    .mcts-panel > p,
-    .mcts-tree > p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 14px;
       line-height: 1.6;
     }
 
-    .mcts-steps {
-      display: grid;
-      gap: 10px;
-      margin-top: 24px;
-    }
-
-    .mcts-step {
-      display: grid;
-      grid-template-columns: 34px 1fr;
-      gap: 12px;
-      align-items: start;
-      padding: 14px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: rgba(255,255,255,.018);
-    }
-
-    .mcts-step-num {
-      width: 34px;
-      height: 34px;
+    .mcts-tree {
+      min-height: 365px;
+      position: relative;
       display: grid;
       place-items: center;
-      border: 1px solid rgba(182,255,74,.35);
-      border-radius: 9px;
-      color: var(--accent);
-      background: var(--accent-soft);
-      font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background:
+        radial-gradient(circle at 50% 46%, rgba(255,66,190,.10), transparent 35%),
+        rgba(7,7,11,.82);
+      overflow: hidden;
     }
 
-    .mcts-step strong {
-      display: block;
-      margin-bottom: 5px;
-      font-size: 14px;
-    }
-
-    .mcts-step span {
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    .tree-visual {
-      margin-top: 26px;
+    .tree {
+      width: min(92%, 470px);
       display: grid;
-      gap: 13px;
-      font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      gap: 28px;
+      font: 10px/1.3 var(--mono);
     }
 
     .tree-row {
       display: flex;
       justify-content: center;
-      gap: 9px;
-      position: relative;
-    }
-
-    .tree-node {
-      min-width: 90px;
-      padding: 10px 11px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      text-align: center;
-      color: var(--muted);
-      background: #0d0d0d;
-    }
-
-    .tree-node.root,
-    .tree-node.best {
-      border-color: rgba(182,255,74,.42);
-      color: var(--accent);
-      background: var(--accent-soft);
-    }
-
-    .mcts-formula {
-      margin-top: 18px;
-      padding: 14px 16px;
-      border-left: 2px solid var(--accent);
-      background: rgba(182,255,74,.055);
-      color: #d9d9d2;
-      font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-    }
-
-    .mcts-code {
-      margin-top: 12px;
-      display: grid;
-      grid-template-columns: .72fr 1.28fr;
       gap: 12px;
     }
 
-    .mcts-note {
-      border: 1px solid rgba(182,255,74,.24);
-      border-radius: 18px;
-      background: var(--accent-soft);
-      padding: 26px;
+    .node {
+      min-width: 91px;
+      padding: 11px 10px;
+      text-align: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0b0a10;
+      color: var(--muted);
     }
 
-    .mcts-note strong {
-      display: block;
-      color: var(--accent);
-      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    .node.best {
+      color: var(--pink);
+      border-color: rgba(255,66,190,.4);
+      background: var(--pink-soft);
+    }
+
+    .mcts-badge {
+      position: absolute;
+      right: 13px;
+      bottom: 13px;
+      color: #706a74;
+      font: 9px/1 var(--mono);
       text-transform: uppercase;
-      letter-spacing: .07em;
+      letter-spacing: .11em;
     }
 
-    .mcts-note h3 {
-      margin: 18px 0 10px;
-      font-size: 26px;
-      letter-spacing: -.04em;
+    .install-section {
+      padding: 110px 0 125px;
+      border-bottom: 1px solid var(--line);
     }
 
-    .mcts-note p {
+    .install-head {
+      display: grid;
+      grid-template-columns: 1fr .65fr;
+      gap: 70px;
+      align-items: end;
+      margin-bottom: 44px;
+    }
+
+    .install-head h2 {
+      margin: 14px 0 0;
+      max-width: 800px;
+      font: 500 clamp(52px, 7vw, 88px)/.92 var(--serif);
+      letter-spacing: -.055em;
+    }
+
+    .install-head p {
       margin: 0;
-      color: #d6d6d0;
-      font-size: 14px;
-      line-height: 1.65;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
     }
 
     .install-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-    }
-
-    .install-card {
-      min-height: 260px;
       border: 1px solid var(--line);
-      border-radius: 18px;
+      border-radius: 11px;
+      overflow: hidden;
+      background: rgba(7,7,11,.76);
+    }
+
+    .install-step {
+      min-height: 310px;
       padding: 24px;
-      background: var(--panel);
+      border-right: 1px solid var(--line);
     }
 
-    .install-card.highlight {
-      border-color: rgba(182,255,74,.32);
-      background:
-        linear-gradient(145deg, rgba(182,255,74,.07), transparent 58%),
-        var(--panel);
+    .install-step:last-child { border-right: 0; }
+
+    .install-step .num {
+      color: var(--pink);
+      font: 10px/1 var(--mono);
+      letter-spacing: .12em;
     }
 
-    .install-index {
-      color: var(--accent);
-      font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    .install-step h3 {
+      margin: 33px 0 12px;
+      font: 500 28px/1 var(--serif);
     }
 
-    .install-card h3 {
-      margin: 26px 0 10px;
-      font-size: 21px;
-      letter-spacing: -.035em;
-    }
-
-    .install-card p {
-      margin: 0 0 18px;
+    .install-step p {
+      min-height: 58px;
+      margin: 0 0 20px;
       color: var(--muted);
       font-size: 13px;
-      line-height: 1.6;
+      line-height: 1.55;
     }
 
-    .install-card pre {
-      min-height: auto;
-      border-radius: 12px;
-      padding: 15px;
-      font-size: 11.5px;
-      line-height: 1.6;
-    }
-
-    .mcp-config {
-      margin-top: 12px;
-      display: grid;
-      grid-template-columns: .8fr 1.2fr;
-      gap: 12px;
-    }
-
-    .mcp-tip {
-      border: 1px solid rgba(182,255,74,.25);
-      border-radius: 18px;
-      padding: 26px;
-      background: var(--accent-soft);
-    }
-
-    .mcp-tip strong {
+    .mini-code {
       display: block;
-      color: var(--accent);
-      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      overflow-x: auto;
+      padding: 15px;
+      border: 1px solid var(--line-soft);
+      border-radius: 7px;
+      background: #08070c;
+      color: #cfc8d2;
+      font: 10.5px/1.62 var(--mono);
+      white-space: pre;
+    }
+
+    .cta {
+      padding: 120px 0 130px;
+      text-align: center;
+    }
+
+    .cta .section-id {
+      justify-content: center;
+    }
+
+    .cta .section-id::after { display: none; }
+
+    .cta h2 {
+      margin: 25px auto 22px;
+      max-width: 900px;
+      font: 500 clamp(56px, 8vw, 102px)/.88 var(--serif);
+      letter-spacing: -.06em;
+    }
+
+    .cta h2 em {
+      color: var(--pink);
+      font-weight: 400;
+    }
+
+    .cta p {
+      max-width: 650px;
+      margin: 0 auto;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .cta-actions {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 34px;
+    }
+
+    .btn {
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 17px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,.02);
+      color: var(--text);
+      font: 650 11px/1 var(--mono);
       text-transform: uppercase;
       letter-spacing: .07em;
     }
 
-    .mcp-tip h3 {
-      margin: 17px 0 10px;
-      font-size: 25px;
-      letter-spacing: -.04em;
+    .btn.primary {
+      border-color: var(--pink);
+      background: var(--pink);
+      color: #140b12;
     }
 
-    .mcp-tip p {
-      margin: 0;
-      color: #d6d6d0;
-      font-size: 14px;
-      line-height: 1.65;
-    }
-
-    .code-wrap {
-      display: grid;
-      grid-template-columns: .78fr 1.22fr;
-      gap: 12px;
-    }
-
-    .code-copy {
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 28px;
-      background: var(--panel);
-    }
-
-    .code-copy h3 {
-      margin: 0 0 12px;
-      font-size: 30px;
-      letter-spacing: -.04em;
-    }
-
-    .code-copy p {
-      color: var(--muted);
-      line-height: 1.6;
-      font-size: 14px;
-    }
-
-    pre {
-      margin: 0;
-      min-height: 100%;
-      overflow: auto;
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      background: #0d0d0d;
-      padding: 24px;
-      color: #d7d7d0;
-      font: 12.5px/1.7 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-    }
-
-    .code-accent { color: var(--accent); }
-
-    .cta {
-      padding-bottom: 120px;
-    }
-
-    .cta-box {
-      position: relative;
-      overflow: hidden;
-      border: 1px solid rgba(182,255,74,.35);
-      border-radius: 22px;
-      padding: clamp(30px, 6vw, 66px);
-      background:
-        radial-gradient(circle at 100% 0, rgba(182,255,74,.14), transparent 38%),
-        var(--panel);
-    }
-
-    .cta-box h2 { max-width: 800px; }
-    .cta-box p {
-      max-width: 620px;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.65;
-    }
+    .btn:hover { transform: translateY(-1px); }
 
     footer {
-      min-height: 100px;
+      min-height: 94px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 24px;
-      border-top: 1px solid var(--line);
-      color: var(--muted);
-      font-size: 12px;
+      gap: 20px;
+      border-top: 1px solid var(--line-soft);
+      color: #6d6871;
+      font: 10px/1.3 var(--mono);
+      letter-spacing: .08em;
+      text-transform: uppercase;
     }
 
-    footer a:hover { color: var(--text); }
-
-    @media (max-width: 860px) {
-      .hero { grid-template-columns: 1fr; gap: 30px; padding-top: 76px; }
-      .hero-card { max-width: 440px; }
-      .proof-strip { grid-template-columns: 1fr 1fr; }
-      .proof:nth-child(2) { border-right: 0; }
-      .proof:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
-      .section-head { grid-template-columns: 1fr; gap: 20px; }
-      .section-copy { justify-self: start; }
-      .detail-grid { grid-template-columns: 1fr 1fr; }
-      .flow-grid { grid-template-columns: 1fr; }
-      .flow-step { min-height: auto; }
-      .flow-step h3 { margin-top: 26px; }
-      .flow-step::after { content: "↓"; top: auto; right: 50%; bottom: -18px; }
-      .mcts-grid,
-      .mcts-code,
-      .mcp-config { grid-template-columns: 1fr; }
+    @media (max-width: 920px) {
+      .hero {
+        min-height: auto;
+        grid-template-columns: 1fr;
+        gap: 58px;
+      }
+      .hero-aside { max-width: 460px; }
+      .stats { grid-template-columns: 1fr 1fr; }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .story {
+        grid-template-columns: 56px 1fr;
+        min-height: auto;
+      }
+      .story > :last-child {
+        grid-column: 2;
+        margin-top: 18px;
+      }
+      .install-head { grid-template-columns: 1fr; gap: 22px; }
       .install-grid { grid-template-columns: 1fr; }
-      .code-wrap { grid-template-columns: 1fr; }
+      .install-step {
+        min-height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .install-step:last-child { border-bottom: 0; }
+      .install-step p { min-height: 0; }
     }
 
     @media (max-width: 620px) {
       .shell { width: min(calc(100% - 24px), var(--max)); }
-      .nav { min-height: 66px; }
-      .nav-links > a:not(.github-pill) { display: none; }
-      h1 { font-size: clamp(49px, 16vw, 75px); }
-      section { padding: 82px 0; }
-      .proof-strip { grid-template-columns: 1fr; }
-      .proof { border-right: 0; border-bottom: 1px solid var(--line); }
-      .proof:nth-child(3) { border-bottom: 1px solid var(--line); }
-      .benchmark-grid { grid-template-columns: 1fr; }
-      .delta-banner { align-items: flex-start; flex-direction: column; }
-      .bar-row { grid-template-columns: 1fr; gap: 8px; }
-      .bar-value { text-align: left; }
-      .detail-grid { grid-template-columns: 1fr; }
-      .explain { grid-template-columns: 1fr; gap: 10px; }
-      footer { align-items: flex-start; flex-direction: column; padding: 28px 0; }
+      .nav { min-height: 64px; }
+      .nav-links a:not(:last-child) { display: none; }
+      .hero { padding: 64px 0 58px; }
+      h1 { font-size: clamp(56px, 18vw, 82px); }
+      .hero-aside { padding-left: 17px; }
+      .stats { grid-template-columns: 1fr; }
+      .stat { border-right: 0; border-bottom: 1px solid var(--line); }
+      .stat:last-child { border-bottom: 0; }
+      .story {
+        grid-template-columns: 1fr;
+        gap: 18px;
+        padding: 78px 0;
+      }
+      .story > :last-child { grid-column: auto; }
+      .story h2 { margin-top: 0; }
+      .install-section { padding: 82px 0 92px; }
+      .cta { padding: 90px 0 100px; }
+      footer {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 27px 0;
+      }
     }
 
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
-      .button { transition: none; }
+      .btn:hover { transform: none; }
     }
   </style>
 </head>
 <body>
   <div class="shell">
-    <nav class="nav" aria-label="Main navigation">
-      <a class="brand" href="#top" aria-label="harness-router home">
-        <span class="brand-mark">hr</span>
-        harness-router
+    <nav class="nav">
+      <a class="brand" href="#top">
+        <span class="brand-dot"></span>
+        Harness Router
       </a>
       <div class="nav-links">
-        <a href="#benchmark">Benchmark</a>
-        <a href="#architecture">Architecture</a>
+        <a href="#why">Why</a>
         <a href="#mcp">MCP</a>
         <a href="#mcts">MCTS</a>
-        <a href="#quickstart">Python</a>
-        <a class="github-pill" href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">
+        <a href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">
           GitHub <span id="stars"></span>
         </a>
       </div>
     </nav>
 
     <main id="top">
-      <div class="hero">
+      <section class="hero">
         <div>
-          <div class="eyebrow">System-1 routing for agent harnesses</div>
-          <h1>Route tools fast.<br><span>Measure everything.</span></h1>
+          <div class="section-id">$ 01 · Decision layer</div>
+          <h1>
+            Stop reasoning<br>
+            about <em>obvious</em><br>
+            tool calls.
+          </h1>
           <p class="hero-copy">
-            A framework-agnostic Jev routing layer for agentic harnesses.
-            Let TypeSafeAI Jev choose the discrete next tool. Keep reasoning,
-            argument generation, policy, and execution in your existing planner.
+            <strong>harness-router</strong> keeps the easy path cheap.
+            Obvious action? Call the tool. Real ambiguity? Ask Jev.
+            Multi-step consequences? Search a bounded tree.
           </p>
-          <div class="actions">
-            <button class="button button-primary" id="copyInstall" type="button" data-command="pip install harness-router">
-              <span>pip install harness-router</span>
-              <span aria-hidden="true">↗</span>
-            </button>
-            <a class="button button-secondary" href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">
-              View on GitHub
-            </a>
+
+          <div class="install">
+            <div class="install-tabs">
+              <span>uv</span><span>pip</span><span>source</span>
+            </div>
+            <div class="command">
+              <span class="prompt">$</span>
+              <code>uv tool install --force --with 'mcp&gt;=2,&lt;3' 'git+https://github.com/Protocol-Lattice/harness-router.git@main'</code>
+              <button class="copy" type="button" data-copy="uv tool install --force --with 'mcp>=2,<3' 'git+https://github.com/Protocol-Lattice/harness-router.git@main'">copy</button>
+            </div>
           </div>
         </div>
 
-        <aside class="hero-card" aria-label="Example routing decision">
-          <div class="hero-card-top">
-            <span>route / 07</span>
-            <span>jev-1.13</span>
-          </div>
-          <div class="decision">read_file</div>
-          <div class="confidence">confidence 0.93</div>
-          <div class="mini-flow">
-            <div>search</div>
-            <div class="active">read</div>
-            <div>write</div>
+        <aside class="hero-aside">
+          <div class="eyebrow">live decision</div>
+          <div class="route-word">read_file</div>
+          <div class="confidence">confidence · 0.93</div>
+          <div class="micro-flow">
+            <div><span>state</span><strong>compact</strong></div>
+            <div><span>candidates</span><strong>4</strong></div>
+            <div><span>provider</span><strong>Jev</strong></div>
+            <div><span>rounds</span><strong>1</strong></div>
           </div>
         </aside>
-      </div>
+      </section>
 
-      <div class="proof-strip" aria-label="Project highlights">
-        <div class="proof">
-          <strong>Hybrid routing</strong>
-          <span>Jev + planner fallback</span>
+      <div class="stats">
+        <div class="stat">
+          <strong>2</strong>
+          <span>MCP tools</span>
         </div>
-        <div class="proof">
-          <strong>Native MCP</strong>
-          <span>route + route_mcts</span>
+        <div class="stat">
+          <strong>1</strong>
+          <span>Jev prior max in MCTS</span>
         </div>
-        <div class="proof">
-          <strong>Python 3.11+</strong>
-          <span>Async, small surface</span>
+        <div class="stat">
+          <strong>0</strong>
+          <span>router calls on obvious steps</span>
         </div>
-        <div class="proof">
+        <div class="stat">
           <strong>MIT</strong>
-          <span>Alpha · benchmark first</span>
+          <span>open source</span>
         </div>
       </div>
 
-      <section class="benchmark" id="benchmark">
-        <div class="section-head">
-          <div>
-            <div class="kicker">Jev vs normal tool calling</div>
-            <h2>The first benchmark did not flatter us.</h2>
-          </div>
-          <p class="section-copy">
-            Ten fresh Codex sessions. Five normal, five using the harness-router skill.
-            Same starting commit, model, reasoning setting, tool definitions, and task controls.
-            All ten runs passed independent verification.
+      <section class="story" id="why">
+        <div class="story-no">01</div>
+        <div>
+          <h2>The fastest route is often <em>no router.</em></h2>
+          <p class="story-copy">
+            Earlier skill-driven routing paid extra planner turns around Jev and made the
+            complete loop slower. The current design reverses the default:
+            <strong>normal tool calling is the fast path.</strong> <code>route</code> exists only for
+            real closed-choice ambiguity.
           </p>
         </div>
-
-        <div class="benchmark-grid">
-          <article class="metric-card">
-            <div class="metric-label">Normal Codex · mean per run</div>
-            <div class="metric-big">341,755<small>tokens</small></div>
-            <div class="metric-sub">Full-system total · 115.8 seconds</div>
-          </article>
-          <article class="metric-card router">
-            <div class="metric-label">Harness-router + Jev · mean per run</div>
-            <div class="metric-big">717,136<small>tokens</small></div>
-            <div class="metric-sub">Full-system total · 228.9 seconds</div>
-          </article>
-        </div>
-
-        <div class="delta-banner">
-          <strong>+109.8% tokens</strong>
-          <p>
-            In this skill-driven integration, harness-router increased measured full-system token usage.
-            That is a benchmark result, not a universal claim about Jev or runtime-native routing.
-          </p>
-        </div>
-
-        <div class="bars" aria-label="Benchmark comparison bars">
-          <div class="bar-row">
-            <div class="bar-label">Normal · full-system tokens</div>
-            <div class="track"><div class="fill" style="width:47.7%"></div></div>
-            <div class="bar-value">341,755</div>
+        <div class="decision-stack">
+          <div class="decision-card active">
+            <b><span>known file</span><span>→ read</span></b>
+            <p>No routing call. The next action is already obvious.</p>
           </div>
-          <div class="bar-row">
-            <div class="bar-label">Jev routing · full-system tokens</div>
-            <div class="track"><div class="fill router" style="width:100%"></div></div>
-            <div class="bar-value">717,136</div>
+          <div class="decision-card active">
+            <b><span>edit finished</span><span>→ test</span></b>
+            <p>No routing call. Deterministic transitions stay local.</p>
           </div>
-          <div class="bar-row">
-            <div class="bar-label">Normal · elapsed</div>
-            <div class="track"><div class="fill" style="width:50.6%"></div></div>
-            <div class="bar-value">115.8 s</div>
-          </div>
-          <div class="bar-row">
-            <div class="bar-label">Jev routing · elapsed</div>
-            <div class="track"><div class="fill router" style="width:100%"></div></div>
-            <div class="bar-value">228.9 s</div>
-          </div>
-        </div>
-
-        <div class="detail-grid">
-          <div class="detail">
-            <strong>13.6 → 24.2</strong>
-            <span>Main-model requests per run</span>
-          </div>
-          <div class="detail">
-            <strong>12.6 → 23.2</strong>
-            <span>Tool calls per run, including router helpers</span>
-          </div>
-          <div class="detail">
-            <strong>454 ms</strong>
-            <span>Average Jev routing decision latency</span>
-          </div>
-          <div class="detail">
-            <strong>54 / 58</strong>
-            <span>Router decisions that ultimately fell back to Codex</span>
-          </div>
-        </div>
-
-        <div class="explain">
-          <strong>Why the overhead?</strong>
-          <p>
-            The tested Codex skill integration asks Codex to issue a routing-helper tool call,
-            then uses another main-model request to generate the selected tool arguments.
-            Both requests count. Most measured tokens were repeated input context, and 54 of
-            58 router decisions ultimately fell back to Codex. A custom runtime that invokes
-            Jev outside a main-model turn was not tested.
-          </p>
-        </div>
-
-        <div class="benchmark-actions">
-          <a class="button button-primary" href="https://github.com/Protocol-Lattice/harness-router/blob/main/BENCHMARK.md" target="_blank" rel="noreferrer">
-            Read benchmark notes
-          </a>
-          <a class="button button-secondary" href="https://github.com/Protocol-Lattice/harness-router/commit/2f71a0b1f429c3ea32a16c4f47151e2c09ae4742" target="_blank" rel="noreferrer">
-            Benchmark starting commit
-          </a>
-        </div>
-      </section>
-
-      <section id="architecture">
-        <div class="section-head">
-          <div>
-            <div class="kicker">Architecture</div>
-            <h2>Make the discrete choice small.</h2>
-          </div>
-          <p class="section-copy">
-            harness-router is deliberately not another agent framework.
-            It is a narrow selection layer between compact harness state and a fixed tool registry.
-          </p>
-        </div>
-
-        <div class="flow-grid">
-          <div class="flow-step">
-            <div class="flow-num">01</div>
-            <h3>Goal + observation</h3>
-            <p>Your harness builds compact state instead of replaying an entire conversation.</p>
-          </div>
-          <div class="flow-step">
-            <div class="flow-num">02</div>
-            <h3>Candidate tools</h3>
-            <p>Generic or MCP tools become normalized descriptors with category and risk metadata.</p>
-          </div>
-          <div class="flow-step">
-            <div class="flow-num">03</div>
-            <h3>Jev chooses</h3>
-            <p>Jev selects the discrete next action and returns confidence plus probabilities.</p>
-          </div>
-          <div class="flow-step">
-            <div class="flow-num">04</div>
-            <h3>Escalate intelligently</h3>
-            <p>Ambiguous choices can enter bounded MCTS search or fall back to the main planner.</p>
-          </div>
-          <div class="flow-step">
-            <div class="flow-num">05</div>
-            <h3>Your executor runs</h3>
-            <p>Authorization and execution remain separate. Confidence is never permission.</p>
+          <div class="decision-card">
+            <b><span>4 plausible tools</span><span>→ route</span></b>
+            <p>Compact state in. One tool choice out.</p>
           </div>
         </div>
       </section>
 
-      <section id="mcp">
-        <div class="section-head">
-          <div>
-            <div class="kicker">Native MCP for Codex</div>
-            <h2>Install the router once. Keep the skill tiny.</h2>
-          </div>
-          <p class="section-copy">
-            The native stdio MCP server exposes fast <code>route</code> plus bounded <code>route_mcts</code>.
-            Codex should use them only at real ambiguity points, while obvious read → edit → test
-            steps stay on the normal fast path. The MCP implementation currently lives on
-            <code>main</code>, so install it directly from GitHub until the next package release.
+      <section class="story" id="mcp">
+        <div class="story-no">02</div>
+        <div>
+          <h2>Native MCP. <em>One tiny choice.</em></h2>
+          <p class="story-copy">
+            Codex gets a native stdio server instead of a heavy helper flow.
+            <code>route</code> takes a compact goal, latest observation, and a small shortlist.
+            The server keeps its provider alive, reuses connections, and returns a tiny structured result.
           </p>
         </div>
-
-        <div class="install-grid">
-          <article class="install-card highlight">
-            <div class="install-index">01 · INSTALL</div>
-            <h3>Install globally with uv</h3>
-            <p>
-              Install the latest harness-router plus the optional MCP SDK into an isolated global tool environment.
-            </p>
-            <pre><code>uv tool install --force \
-  --with 'mcp&gt;=2,&lt;3' \
-  'git+https://github.com/Protocol-Lattice/harness-router.git@main'
-
-uv tool update-shell</code></pre>
-            <div class="actions">
-              <button class="button button-primary" type="button"
-                data-copy="uv tool install --force --with 'mcp&gt;=2,&lt;3' 'git+https://github.com/Protocol-Lattice/harness-router.git@main'">
-                Copy install
-              </button>
-            </div>
-          </article>
-
-          <article class="install-card">
-            <div class="install-index">02 · KEY</div>
-            <h3>Expose the OpenRouter key</h3>
-            <p>
-              The MCP server starts without the key, but <code>route</code> needs it when a Jev decision is requested.
-            </p>
-            <pre><code>export OPENROUTER_API_KEY="..."
-
-command -v harness-router-mcp</code></pre>
-            <p>
-              Never put the key value in prompts, tool descriptions, routing state, source files, or Git.
-            </p>
-          </article>
-
-          <article class="install-card">
-            <div class="install-index">03 · CODEX</div>
-            <h3>Register the stdio server</h3>
-            <p>
-              Add the executable to Codex, then verify that the server is configured.
-            </p>
-            <pre><code>codex mcp add harness-router -- harness-router-mcp
-
-codex mcp list</code></pre>
-            <div class="actions">
-              <button class="button button-secondary" type="button"
-                data-copy="codex mcp add harness-router -- harness-router-mcp">
-                Copy Codex command
-              </button>
-            </div>
-          </article>
-        </div>
-
-        <div class="mcp-config">
-          <aside class="mcp-tip">
-            <strong>Codex config</strong>
-            <h3>Pass the key by name, not by value.</h3>
-            <p>
-              In <code>~/.codex/config.toml</code>, allow Codex to forward
-              <code>OPENROUTER_API_KEY</code> to the local stdio process. If Codex cannot resolve
-              <code>harness-router-mcp</code> through PATH, replace the command with the absolute
-              path returned by <code>command -v harness-router-mcp</code>.
-            </p>
-          </aside>
-
-          <pre><code>[mcp_servers.harness-router]
+        <div class="terminal">
+          <div class="terminal-top">
+            <span>~/.codex/config.toml</span>
+            <span class="terminal-dots"><i></i><i></i><i></i></span>
+          </div>
+          <pre><code><span class="pink">[mcp_servers.harness-router]</span>
 command = "harness-router-mcp"
 env_vars = ["OPENROUTER_API_KEY"]
 enabled = true
 startup_timeout_sec = 10
-tool_timeout_sec = 5</code></pre>
+tool_timeout_sec = 5
+
+<span class="dim"># then restart Codex</span>
+/mcp
+
+<span class="pink">route</span>
+<span class="pink">route_mcts</span></code></pre>
         </div>
+      </section>
 
-        <div class="mcp-config">
-          <aside class="mcp-tip">
-            <strong>MCP MCTS</strong>
-            <h3>Look ahead without executing real tools.</h3>
-            <p>
-              Use <code>route_mcts</code> only when the best first action depends on downstream
-              consequences and your harness can provide a predicted, side-effect-free state graph.
-              The search executes no real writes, shell commands, browser mutations, or network mutations.
-            </p>
-          </aside>
-
-          <pre><code>route           # fast Jev decision
-route_mcts      # bounded PUCT search
-
-recommended:
-simulations = 32
-max_depth = 3
-use_jev_prior = true
-
-# Jev is evaluated at most once.
-# Remaining simulations are local.</code></pre>
+      <section class="story" id="mcts">
+        <div class="story-no">03</div>
+        <div>
+          <h2>When one move is not enough, <em>search.</em></h2>
+          <p class="story-copy">
+            <code>route_mcts</code> explores a supplied side-effect-free state graph.
+            Jev can seed the root once; the remaining simulations are local.
+            The server never executes simulated writes, shell commands, browser mutations,
+            or network mutations. It selects only the <strong>first real action.</strong>
+          </p>
         </div>
+        <div class="mcts-tree">
+          <div class="tree">
+            <div class="tree-row">
+              <div class="node best">root<br>state</div>
+            </div>
+            <div class="tree-row">
+              <div class="node">quick<br>0.60</div>
+              <div class="node best">invest<br>0.78</div>
+              <div class="node">verify<br>0.31</div>
+            </div>
+            <div class="tree-row">
+              <div class="node">inspect</div>
+              <div class="node best">finish<br>1.00</div>
+              <div class="node">fallback</div>
+            </div>
+          </div>
+          <div class="mcts-badge">32–64 sims · depth 2–4 recommended</div>
+        </div>
+      </section>
 
-        <div class="explain">
-          <strong>Verify it</strong>
+      <section class="story" id="benchmark">
+        <div class="story-no">04</div>
+        <div>
+          <h2>Benchmark the <em>whole loop.</em></h2>
+          <p class="story-copy">
+            The first controlled Codex skill benchmark was a failure on cost:
+            the skill-driven integration added requests, fallbacks, tokens, and wall time.
+            We keep that result public because selector latency is meaningless if the harness around it gets worse.
+          </p>
+        </div>
+        <div class="benchmark-panel">
+          <div class="bench-row">
+            <span>Normal Codex · mean full-system tokens</span>
+            <strong>341,755</strong>
+          </div>
+          <div class="bench-row warn">
+            <span>Old skill-driven Jev integration</span>
+            <strong>717,136</strong>
+          </div>
+          <div class="bench-row">
+            <span>Main-model requests</span>
+            <strong>13.6 → 24.2</strong>
+          </div>
+          <div class="bench-row">
+            <span>Measured Jev decision latency</span>
+            <strong>454 ms</strong>
+          </div>
+          <div class="bench-note">
+            This benchmark measured the old skill/helper integration, not the new native MCP path.
+            No claim of MCP token savings is made until the full loop is benchmarked.
+          </div>
+        </div>
+      </section>
+
+      <section class="install-section" id="install">
+        <div class="install-head">
+          <div>
+            <div class="section-id">$ 05 · Install</div>
+            <h2>Three steps. Then get out of the way.</h2>
+          </div>
           <p>
-            Restart Codex after changing the MCP configuration, then run <code>/mcp</code>.
-            The harness-router server should expose both <code>route</code> and <code>route_mcts</code>. Running
-            <code>harness-router-mcp</code> manually should appear to hang silently — that is normal:
-            the stdio server is waiting for an MCP client. If the API key is missing, the server still
-            loads and <code>route</code> returns a controlled <code>missing_openrouter_api_key</code> fallback. <code>route_mcts</code> can still run locally with a uniform prior when no key is available.
+            Install the latest main branch, expose your OpenRouter key to the local MCP process,
+            and register the server in Codex.
           </p>
         </div>
 
-        <div class="mcp-config">
-          <aside class="mcp-tip">
-            <strong>MCTS over MCP</strong>
-            <h3>Search locally. Execute only one real action.</h3>
-            <p>
-              <code>route_mcts</code> consumes an explicit side-effect-free state graph. It never
-              executes simulated tools. Keep the graph small, prefer 32–64 simulations and depth
-              2–4, and treat the principal variation as advisory. The server caps search at 256
-              simulations, depth 8, 256 states, 1024 transitions, and one Jev policy evaluation.
-            </p>
-          </aside>
-          <pre><code>{
-  "root_state": "root",
-  "states": [
-    {"id":"root","goal":"Choose","tools":[
-      {"name":"quick","risk":"low"},
-      {"name":"invest","risk":"low"}
-    ]},
-    {"id":"invested","goal":"Investigated","tools":[
-      {"name":"finish","risk":"low"}
-    ]},
-    {"id":"done","goal":"Done","tools":[]}
-  ],
-  "transitions": [
-    {"from_state":"root","tool":"invest",
-     "to_state":"invested","reward":0.05},
-    {"from_state":"invested","tool":"finish",
-     "to_state":"done","reward":1.0,"terminal":true}
-  ],
-  "simulations": 64,
-  "max_depth": 2,
-  "use_jev_prior": true
-}</code></pre>
-        </div>
-      </section>
-
-      <section id="mcts">
-        <div class="section-head">
-          <div>
-            <div class="kicker">Experimental search strategy</div>
-            <h2>When one choice is not enough, search the next few.</h2>
-          </div>
-          <p class="section-copy">
-            Jev is strongest as a fast System-1 selector. For ambiguous states, use it to seed
-            a small Monte Carlo Tree Search instead of asking the main model to repeatedly
-            reconsider the entire tool registry. Search a bounded action tree, choose the
-            best first move, execute exactly one tool, then re-plan from fresh state.
-          </p>
-        </div>
-
-        <div class="mcts-grid">
-          <article class="mcts-panel">
-            <h3>Jev-seeded MCTS</h3>
-            <p>
-              Keep the tree narrow and cheap. Candidate actions come from Jev probabilities;
-              rollouts evaluate short tool sequences against progress, verification, cost, and risk.
-            </p>
-
-            <div class="mcts-steps">
-              <div class="mcts-step">
-                <div class="mcts-step-num">01</div>
-                <div>
-                  <strong>Seed top-k actions</strong>
-                  <span>Use Jev probabilities as priors instead of expanding every available tool.</span>
-                </div>
-              </div>
-              <div class="mcts-step">
-                <div class="mcts-step-num">02</div>
-                <div>
-                  <strong>Select + expand</strong>
-                  <span>Use UCB/PUCT to balance high-value branches with under-explored alternatives.</span>
-                </div>
-              </div>
-              <div class="mcts-step">
-                <div class="mcts-step-num">03</div>
-                <div>
-                  <strong>Run bounded rollouts</strong>
-                  <span>Search only a few actions deep. Prefer dry-run state transitions when tools mutate state.</span>
-                </div>
-              </div>
-              <div class="mcts-step">
-                <div class="mcts-step-num">04</div>
-                <div>
-                  <strong>Backpropagate reward</strong>
-                  <span>Score goal progress and verification positively; subtract latency, tokens, risk, and failed actions.</span>
-                </div>
-              </div>
-              <div class="mcts-step">
-                <div class="mcts-step-num">05</div>
-                <div>
-                  <strong>Execute one action</strong>
-                  <span>Commit only the best root action, observe the real result, discard the stale tree, and search again.</span>
-                </div>
-              </div>
-            </div>
+        <div class="install-grid">
+          <article class="install-step">
+            <div class="num">01 · GLOBAL</div>
+            <h3>Install</h3>
+            <p>Keep it isolated and globally available through <code>uv tool</code>.</p>
+            <code class="mini-code">uv tool install --force \
+  --with 'mcp&gt;=2,&lt;3' \
+  'git+https://github.com/Protocol-Lattice/harness-router.git@main'</code>
           </article>
 
-          <article class="mcts-tree">
-            <h3>Search a tiny horizon.</h3>
-            <p>
-              The goal is not exhaustive planning. It is a bounded second opinion for states
-              where a single routing decision has low confidence or several plausible continuations.
-            </p>
+          <article class="install-step">
+            <div class="num">02 · ENV</div>
+            <h3>Expose the key</h3>
+            <p>The server can load without it. Jev routing needs it when <code>route</code> is called.</p>
+            <code class="mini-code">export OPENROUTER_API_KEY="..."
 
-            <div class="tree-visual" aria-label="Monte Carlo tree search example">
-              <div class="tree-row">
-                <div class="tree-node root">state<br>root</div>
-              </div>
-              <div class="tree-row">
-                <div class="tree-node best">read_file<br>π .46</div>
-                <div class="tree-node">search<br>π .31</div>
-                <div class="tree-node">run_tests<br>π .23</div>
-              </div>
-              <div class="tree-row">
-                <div class="tree-node best">patch<br>Q .84</div>
-                <div class="tree-node">inspect<br>Q .62</div>
-                <div class="tree-node">grep<br>Q .58</div>
-              </div>
-            </div>
-
-            <div class="mcts-formula">
-              PUCT ≈ Q(s,a) + c · P(a|s) · √N(s) / (1 + N(s,a))
-            </div>
+command -v harness-router-mcp</code>
           </article>
-        </div>
 
-        <div class="mcts-code">
-          <aside class="mcts-note">
-            <strong>Decision policy</strong>
-            <h3>Fast path first. Search only on uncertainty.</h3>
-            <p>
-              A practical trigger is confidence below your routing threshold, a small margin
-              between the top two actions, or a high-impact decision. MCTS should be an escalation
-              path, not the default for every tool call.
-            </p>
-          </aside>
+          <article class="install-step">
+            <div class="num">03 · CODEX</div>
+            <h3>Register MCP</h3>
+            <p>Add the stdio server, restart Codex, then verify both tools with <code>/mcp</code>.</p>
+            <code class="mini-code">codex mcp add harness-router -- \
+  harness-router-mcp
 
-          <pre><code><span class="code-accent">async def</span> choose_next_action(state, tools):
-    ranked = <span class="code-accent">await</span> jev.rank(state, tools)
-
-    <span class="code-accent">if</span> ranked.confidence &gt;= FAST_PATH_THRESHOLD:
-        <span class="code-accent">return</span> ranked.best
-
-    root = Node(state, priors=ranked.top_k(4))
-
-    <span class="code-accent">for</span> _ <span class="code-accent">in</span> range(32):
-        leaf = select_with_puct(root)
-        child = expand_one(leaf)
-
-        reward = <span class="code-accent">await</span> rollout(
-            child,
-            depth=3,
-            reward=lambda r: (
-                2.0 * r.verified_progress
-                - 0.4 * r.cost
-                - 1.2 * r.risk
-                - 1.0 * r.failure
-            ),
-        )
-        backpropagate(child, reward)
-
-    <span class="code-accent">return</span> root.best_child().action
-    # execute ONE real action, observe, then rebuild</code></pre>
-        </div>
-      </section>
-
-      <section id="quickstart">
-        <div class="section-head">
-          <div>
-            <div class="kicker">Python API</div>
-            <h2>Or embed it directly in your harness.</h2>
-          </div>
-          <p class="section-copy">
-            Use hybrid mode as the default. Route bounded choices with Jev,
-            then let your planner handle code, patches, shell arguments, and open-ended reasoning.
-          </p>
-        </div>
-
-        <div class="code-wrap">
-          <div class="code-copy">
-            <h3>Install in one line.</h3>
-            <p>
-              Set <code>OPENROUTER_API_KEY</code>. The default provider uses
-              <code>typesafe/jev-1.13</code> through the OpenRouter Decisions API.
-            </p>
-            <div class="actions">
-              <button class="button button-primary" type="button" data-copy="pip install harness-router">
-                Copy install
-              </button>
-              <a class="button button-secondary" href="https://github.com/Protocol-Lattice/harness-router#python-quick-start" target="_blank" rel="noreferrer">
-                Full docs
-              </a>
-            </div>
-          </div>
-          <pre><code><span class="code-accent">from</span> harness_router <span class="code-accent">import</span> (
-    HarnessState,
-    JevToolRouter,
-    OpenRouterConfig,
-    OpenRouterJevProvider,
-    RoutingConfig,
-)
-
-provider = OpenRouterJevProvider.from_config(
-    OpenRouterConfig()
-)
-router = JevToolRouter(provider, RoutingConfig())
-
-decision = <span class="code-accent">await</span> router.route(
-    HarnessState(
-        goal="Fix the failing parser test",
-        observation="Failure points to src/parser.py",
-    ),
-    tools,
-)
-
-<span class="code-accent">if</span> decision.fallback:
-    # hand the choice back to your planner
-    ...
-<span class="code-accent">else</span>:
-    print(decision.tool, decision.confidence)</code></pre>
+codex mcp list</code>
+          </article>
         </div>
       </section>
 
       <section class="cta">
-        <div class="cta-box">
-          <div class="kicker">The rule</div>
-          <h2>Do not optimize the router. Optimize the whole loop.</h2>
-          <p>
-            harness-router is alpha software. The measured Codex skill integration shows exactly why
-            end-to-end evidence matters: a fast selector can still make the complete agent slower or
-            more expensive when the surrounding integration adds turns and fallbacks.
-          </p>
-          <div class="actions">
-            <a class="button button-primary" href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">
-              Star / inspect on GitHub
-            </a>
-            <a class="button button-secondary" href="#benchmark">
-              See the numbers again
-            </a>
-          </div>
+        <div class="section-id">$ 06 · The rule</div>
+        <h2>Route less.<br><em>Choose better.</em></h2>
+        <p>
+          Use the model where reasoning matters. Use Jev where the choice is closed.
+          Use MCTS where the next few moves matter. Skip all of it when the next step is obvious.
+        </p>
+        <div class="cta-actions">
+          <a class="btn primary" href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">View on GitHub</a>
+          <a class="btn" href="https://github.com/Protocol-Lattice/harness-router/blob/main/README.md" target="_blank" rel="noreferrer">Read docs</a>
+          <a class="btn" href="#install">Install MCP</a>
         </div>
       </section>
     </main>
 
     <footer>
       <span>Protocol Lattice · harness-router · MIT</span>
-      <span>Built for honest harness experiments.</span>
+      <span>Fast path first. Benchmark everything.</span>
     </footer>
   </div>
 
@@ -1469,16 +980,11 @@ decision = <span class="code-accent">await</span> router.route(
       try {
         await navigator.clipboard.writeText(text);
         const original = button.textContent;
-        button.textContent = "Copied ✓";
+        button.textContent = "copied ✓";
         window.setTimeout(() => { button.textContent = original; }, 1300);
       } catch {
         window.prompt("Copy command:", text);
       }
-    }
-
-    const install = document.getElementById("copyInstall");
-    if (install) {
-      install.addEventListener("click", () => copyText(install.dataset.command, install));
     }
 
     document.querySelectorAll("[data-copy]").forEach((button) => {
