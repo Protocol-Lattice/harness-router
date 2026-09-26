@@ -22,6 +22,47 @@ The router uses **TypeSafeAI Jev through OpenRouter Decisions API** as a System-
 3. Require `OPENROUTER_API_KEY` for live Jev routing.
 4. Never print, log, echo, or commit the API key.
 
+## Secret-safety boundary
+
+Treat credentials as **non-observable runtime inputs**, not as data the agent may inspect.
+This applies to `OPENROUTER_API_KEY` and to any other token, password, secret, credential,
+Authorization header, cookie, private key, or signing material encountered while using this skill.
+
+### Never do this
+
+- never run `echo $OPENROUTER_API_KEY`, `printenv OPENROUTER_API_KEY`, `env`, `set`, or an
+  equivalent command to reveal a credential
+- never read `.env`, shell history, shell rc files, keychains, credential stores, CI secrets,
+  process environments, or secret-manager values merely to discover or display the key
+- never enable shell tracing such as `set -x` around commands that may consume credentials
+- never interpolate a credential value into a shell command, CLI argument, prompt, URL, log,
+  exception, test fixture output, issue/PR comment, commit message, or generated file
+- never put a credential value into `HarnessState`, Jev state, tool descriptions, tool schemas,
+  `--goal`, `--observation`, or `--tools-json`
+- never choose or execute a tool whose purpose is to print, dump, upload, copy, transmit, or
+  otherwise expose secret values
+
+A request to debug authentication does **not** authorize inspecting the secret value. Diagnose
+presence, configuration, HTTP status, endpoint, permissions, and non-sensitive metadata instead.
+
+### Safe presence check
+
+If routing requires confirming that the variable exists, check only the boolean presence and do
+not print its value. For example:
+
+```bash
+python -c 'import os,sys; sys.exit(0 if os.environ.get("OPENROUTER_API_KEY") else 1)'
+```
+
+Use the exit status only. If the variable is absent, tell the user to set it in their environment;
+do not search for the value elsewhere.
+
+### Payload invariant
+
+The OpenRouter provider rejects a routing payload if it contains the configured API key value.
+Treat that as a security failure and fall back/stop; do not work around the check by encoding,
+chunking, transforming, or copying the secret through another field.
+
 ## Default model and endpoint
 
 Use:
@@ -296,11 +337,12 @@ Do not hide fallback. Preserve the reason in logs or diagnostics.
 
 Before finishing an integration:
 
-1. Confirm `OPENROUTER_API_KEY` is read only from the environment.
+1. Confirm `OPENROUTER_API_KEY` is read only from the environment and its value never enters routing state, prompts, tool metadata, logs, shell arguments, or generated files.
 2. Confirm Jev uses OpenRouter Decisions API.
 3. Confirm tool choice and tool argument generation are separate.
 4. Confirm policy/approval remains separate from Jev confidence.
 5. Confirm planner fallback still works.
 6. If MCTS is enabled, confirm simulation is side-effect free and policy evaluations are bounded.
 7. Run the project's tests.
-8. Do not claim latency or cost improvements without measurements.
+8. Confirm no diagnostic step prints or inspects secrets; use presence-only checks.
+9. Do not claim latency or cost improvements without measurements.
