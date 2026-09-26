@@ -1,4 +1,6 @@
-<img width="1774" height="887" alt="Obraz ChatGPT 26 wrz 2026 o 12_37_29" src="https://github.com/user-attachments/assets/08f03383-7701-445b-b72d-6524959652a5" />
+<p align="center">
+  <img src="./assets/harness-router-logo.png" width="500" alt="harness-router">
+</p>
 
 **Framework-agnostic Jev tool routing for agentic harnesses.**
 
