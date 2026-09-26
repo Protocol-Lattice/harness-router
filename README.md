@@ -37,9 +37,10 @@ The router is intentionally small:
 - optional bounded Monte Carlo Tree Search (MCTS) for multi-step lookahead
 - confidence-aware decisions
 - MCP and generic tool adapters
+- native, token-light MCP <code>route</code> server over stdio
 - conservative risk metadata
 - optional loop detection for long-running harnesses
-- no dependency on an MCP SDK
+- no required MCP SDK dependency in the core install
 - async Python API
 - CLI aliases: <code>harness-router</code> and <code>har</code>
 
@@ -51,6 +52,12 @@ Requires **Python 3.11+**.
 
 ~~~bash
 pip install harness-router
+~~~
+
+For the native MCP server:
+
+~~~bash
+pip install "harness-router[mcp]"
 ~~~
 
 For development:
@@ -534,6 +541,58 @@ async def choose(
 
 This keeps the routing layer provider-agnostic while <code>OpenRouterJevProvider</code> provides the default Jev integration.
 
+## Native MCP server
+
+For Codex and other MCP hosts, prefer the native MCP server over the routing-helper skill.
+It exposes exactly one tool, `route`, and keeps the Jev provider alive for the process
+lifetime so HTTP connections and the router cache are reused.
+
+Install the optional MCP support:
+
+~~~bash
+pip install "harness-router[mcp]"
+export OPENROUTER_API_KEY="your-key"
+~~~
+
+Start the stdio server:
+
+~~~bash
+harness-router-mcp
+~~~
+
+The MCP tool accepts a compact payload:
+
+~~~json
+{
+  "goal": "Fix the failing parser test",
+  "observation": "Failure points to src/parser.py",
+  "tools": [
+    {"name": "read_file", "description": "Read source", "category": "inspect", "risk": "low"},
+    {"name": "search_code", "description": "Search repo", "category": "inspect", "risk": "low"},
+    {"name": "run_tests", "description": "Run tests", "category": "verify", "risk": "low"},
+    {"name": "write_file", "description": "Write source", "category": "mutate", "risk": "medium"}
+  ]
+}
+~~~
+
+The response intentionally omits the full probability map:
+
+~~~json
+{"tool":"read_file","confidence":0.93,"fallback":false,"reason":null}
+~~~
+
+For Codex, add the stdio server to `~/.codex/config.toml`:
+
+~~~toml
+[mcp_servers.harness-router]
+command = "harness-router-mcp"
+~~~
+
+Then keep the instruction small: use `route` only at genuine ambiguity points; skip it
+for obvious linear steps. The MCP server uses the fast profile by default: equal
+`0.72` direct/fallback thresholds, a 2 second provider timeout, compact state fields,
+and flat routing through 48 candidates.
+
 ## Codex skill
 
 This repository includes a ready-to-use skill at:
@@ -546,7 +605,7 @@ For Codex, copy the <code>skills/harness-router</code> directory into a location
 
 The skill tells Codex to use Jev selectively for **ambiguous tool selection**, while retaining Codex for reasoning and free-form argument generation.
 
-For unmodified Codex, the helper adds an extra tool/model turn. To keep total tokens down, the skill now uses a maximum of two routing-helper calls per task, skips obvious linear tool steps, and stops routing after the first fallback or planner override. The helper emits compact JSON by default; use `--verbose` only for diagnostics.
+For unmodified Codex, prefer the native MCP server above. If you use the helper skill instead, it is limited to at most one routing-helper call per task, skips obvious linear tool steps, and stops routing after the first fallback or planner override. The helper emits compact JSON by default; use `--verbose` only for diagnostics.
 
 It also contains a direct routing helper:
 
@@ -615,7 +674,7 @@ python examples/coding_agent.py \
 
 The planner model defaults to `openrouter/free`. Override it with `--model` or
 `OPENROUTER_MODEL`. The example follows the cost-aware rules from
-`skills/harness-router/SKILL.md`: at most two Jev routing calls per task, no retry after a
+`skills/harness-router/SKILL.md`: at most one Jev routing call per task, no retry after a
 router fallback, and planner-only argument/code generation. It intentionally exposes no
 arbitrary shell tool; verification is limited to `pytest -q`.
 
