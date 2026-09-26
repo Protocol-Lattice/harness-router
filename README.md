@@ -77,7 +77,9 @@ Set your API key:
 export OPENROUTER_API_KEY="your-key"
 ~~~
 
-Do not commit or log the key.
+Do not commit, log, print, echo, or place the key in prompts/routing state. Treat credentials as non-observable runtime inputs. If you only need to check configuration, test whether the environment variable is present without printing its value.
+
+The OpenRouter provider also refuses to send a Jev routing payload if it contains the configured API key value and redacts the key from provider error text.
 
 ## CLI
 
