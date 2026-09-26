@@ -32,6 +32,7 @@ PLANNER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "openrouter/free"
 MAX_ROUTER_CALLS = 2
 MAX_PLANNER_ATTEMPTS = 2
+MAX_INSPECTIONS_BEFORE_MUTATION = 3
 
 
 TOOLS: tuple[ToolDescriptor, ...] = (
@@ -137,6 +138,7 @@ class AgentState:
     router_enabled: bool = True
     router_calls: int = 0
     inspection_calls: set[str] = field(default_factory=set)
+    inspected_paths: set[str] = field(default_factory=set)
 
 
 class OpenRouterFreePlanner:
@@ -449,6 +451,10 @@ class CodingAgent:
 
             if descriptor.category == "inspect":
                 state.inspection_calls.add(fingerprint)
+                if tool_name == "read_file" and not result.startswith("error:"):
+                    path = arguments.get("path")
+                    if isinstance(path, str):
+                        state.inspected_paths.add(path)
             elif descriptor.category == "mutate" and not result.startswith("error:"):
                 state.inspection_calls.clear()
 
@@ -461,6 +467,14 @@ class CodingAgent:
         return state
 
     async def _next_action(self, state: AgentState) -> tuple[str, dict[str, Any]]:
+        target_path = _target_path_from_goal(state.goal)
+
+        if not state.history and target_path is not None:
+            candidate = (self.workspace.root / target_path).resolve()
+            if candidate.is_relative_to(self.workspace.root) and candidate.is_file():
+                print(f"[progress] direct target from goal: {target_path}")
+                return "read_file", {"path": target_path}
+
         if state.history:
             last_tool = state.history[-1].tool
 
@@ -473,6 +487,26 @@ class CodingAgent:
             if state.tests_passed and self.workspace.changed_files:
                 changed = ", ".join(sorted(self.workspace.changed_files))
                 return "finish", {"summary": f"Updated {changed}; tests passed."}
+
+        if _goal_requires_mutation(state.goal) and not self.workspace.changed_files:
+            inspections = sum(
+                1
+                for item in state.history
+                if item.tool in {"list_files", "read_file", "search_code"}
+                and not item.outcome.startswith("error:")
+                and not item.outcome.startswith("duplicate inspection blocked:")
+            )
+            target_is_inspected = (
+                target_path is not None and target_path in state.inspected_paths
+            )
+            if target_is_inspected or inspections >= MAX_INSPECTIONS_BEFORE_MUTATION:
+                print("[progress] inspection budget reached -> mutation phase")
+                mutation_tools = [
+                    tool
+                    for tool in TOOLS
+                    if tool.name in {"replace_text", "write_file"}
+                ]
+                return await self.planner.choose(state, mutation_tools)
 
         if state.router_enabled and state.router_calls < MAX_ROUTER_CALLS:
             state.router_calls += 1
@@ -635,6 +669,55 @@ def _parse_arguments(value: Any) -> dict[str, Any] | None:
             return None
         return parsed if isinstance(parsed, dict) else None
     return None
+
+
+def _goal_requires_mutation(goal: str) -> bool:
+    words = {
+        "add",
+        "change",
+        "create",
+        "delete",
+        "fix",
+        "implement",
+        "modify",
+        "refactor",
+        "remove",
+        "rename",
+        "replace",
+        "rewrite",
+        "update",
+    }
+    lowered = goal.lower()
+    return any(word in lowered.split() for word in words)
+
+
+def _target_path_from_goal(goal: str) -> str | None:
+    candidates: list[str] = []
+    cleaned = goal.replace("\`", " ").replace('"', " ").replace("'", " ")
+    for raw in cleaned.split():
+        token = raw.strip(".,:;()[]{}")
+        if "/" not in token:
+            continue
+        if token.startswith(("/", "../")):
+            continue
+        if token.endswith(
+            (
+                ".py",
+                ".go",
+                ".rs",
+                ".js",
+                ".ts",
+                ".tsx",
+                ".jsx",
+                ".md",
+                ".toml",
+                ".yaml",
+                ".yml",
+                ".json",
+            )
+        ):
+            candidates.append(token)
+    return candidates[0] if candidates else None
 
 
 def _call_fingerprint(tool_name: str, arguments: Mapping[str, Any]) -> str:
