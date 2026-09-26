@@ -7,6 +7,8 @@ description: Use Protocol Lattice harness-router/Jev only when the user explicit
 
 Use this skill as a **rare ambiguity resolver**, not as a per-step router.
 
+If the native MCP tool `route` from the `harness-router` MCP server is available, use it directly. Do not invoke the Python helper script in that case.
+
 ## Fast path
 
 Default: use normal harness/Codex tool calling.
@@ -30,6 +32,8 @@ Budget: **max 1 helper call per user task**. After fallback/error/override, neve
 ## Minimal call
 
 Pass only 4-12 plausible candidates with short descriptions. Never send schemas, full conversation history, source files, or secrets.
+
+Preferred path: call the native MCP `route` tool. Use the script below only when the MCP server is unavailable.
 
 ```bash
 python skills/harness-router/scripts/route.py \
