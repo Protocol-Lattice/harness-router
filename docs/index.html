@@ -1324,7 +1324,7 @@ tool_timeout_sec = 5
               <div class="node">fallback</div>
             </div>
           </div>
-          <div class="mcts-badge">32–64 sims · depth 2–4 recommended</div>
+          <div class="mcts-badge">4,096 sims · depth 3 benchmark profile</div>
         </div>
       </section>
 
@@ -1375,20 +1375,20 @@ tool_timeout_sec = 5
                 <section class="bench-experiment" aria-labelledby="bench-route_mcts-mean-title">
                   <div>
                     <h4 id="bench-route_mcts-mean-title"><code>route_mcts</code></h4>
-                    <p class="bench-experiment-kind">Three-step reward trees</p>
-                    <strong class="bench-speed">16.7×</strong>
+                    <p class="bench-experiment-kind">Three-step trees · 4,096 sims</p>
+                    <strong class="bench-speed">12.3×</strong>
                     <span class="bench-speed-label">faster · observed mean latency</span>
                   </div>
                   <div>
-                    <div class="bench-bar" style="--latency: 5950.5">
-                      <div class="bench-bar-label"><span>Codex</span><strong>5,950.5 ms</strong></div>
+                    <div class="bench-bar" style="--latency: 4772.4">
+                      <div class="bench-bar-label"><span>Codex</span><strong>4,772.4 ms</strong></div>
                       <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
                     </div>
-                    <div class="bench-bar router" style="--latency: 356.7">
-                      <div class="bench-bar-label"><span>Harness-router</span><strong>356.7 ms</strong></div>
+                    <div class="bench-bar router" style="--latency: 388">
+                      <div class="bench-bar-label"><span>Harness-router</span><strong>388 ms</strong></div>
                       <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
                     </div>
-                    <p class="bench-quality"><strong>11/24 optimal · 45.8%</strong><span>Codex: 24/24 · 100%</span></p>
+                    <p class="bench-quality"><strong>24/24 optimal · 100%</strong><span>Codex: 24/24 · 100%</span></p>
                   </div>
                 </section>
               </div>
@@ -1415,20 +1415,20 @@ tool_timeout_sec = 5
                 <section class="bench-experiment" aria-labelledby="bench-route_mcts-median-title">
                   <div>
                     <h4 id="bench-route_mcts-median-title"><code>route_mcts</code></h4>
-                    <p class="bench-experiment-kind">Three-step reward trees</p>
-                    <strong class="bench-speed">15.6×</strong>
+                    <p class="bench-experiment-kind">Three-step trees · 4,096 sims</p>
+                    <strong class="bench-speed">11.6×</strong>
                     <span class="bench-speed-label">faster · observed median latency</span>
                   </div>
                   <div>
-                    <div class="bench-bar" style="--latency: 5199.5">
-                      <div class="bench-bar-label"><span>Codex</span><strong>5,199.5 ms</strong></div>
+                    <div class="bench-bar" style="--latency: 4328.5">
+                      <div class="bench-bar-label"><span>Codex</span><strong>4,328.5 ms</strong></div>
                       <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
                     </div>
-                    <div class="bench-bar router" style="--latency: 333.5">
-                      <div class="bench-bar-label"><span>Harness-router</span><strong>333.5 ms</strong></div>
+                    <div class="bench-bar router" style="--latency: 372.5">
+                      <div class="bench-bar-label"><span>Harness-router</span><strong>372.5 ms</strong></div>
                       <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
                     </div>
-                    <p class="bench-quality"><strong>11/24 optimal · 45.8%</strong><span>Codex: 24/24 · 100%</span></p>
+                    <p class="bench-quality"><strong>24/24 optimal · 100%</strong><span>Codex: 24/24 · 100%</span></p>
                   </div>
                 </section>
               </div>
@@ -1455,27 +1455,27 @@ tool_timeout_sec = 5
                 <section class="bench-experiment" aria-labelledby="bench-route_mcts-p95-title">
                   <div>
                     <h4 id="bench-route_mcts-p95-title"><code>route_mcts</code></h4>
-                    <p class="bench-experiment-kind">Three-step reward trees</p>
-                    <strong class="bench-speed">15.8×</strong>
+                    <p class="bench-experiment-kind">Three-step trees · 4,096 sims</p>
+                    <strong class="bench-speed">12.8×</strong>
                     <span class="bench-speed-label">faster · observed p95 latency</span>
                   </div>
                   <div>
-                    <div class="bench-bar" style="--latency: 8848">
-                      <div class="bench-bar-label"><span>Codex</span><strong>8,848 ms</strong></div>
+                    <div class="bench-bar" style="--latency: 6958">
+                      <div class="bench-bar-label"><span>Codex</span><strong>6,958 ms</strong></div>
                       <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
                     </div>
-                    <div class="bench-bar router" style="--latency: 560">
-                      <div class="bench-bar-label"><span>Harness-router</span><strong>560 ms</strong></div>
+                    <div class="bench-bar router" style="--latency: 545">
+                      <div class="bench-bar-label"><span>Harness-router</span><strong>545 ms</strong></div>
                       <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
                     </div>
-                    <p class="bench-quality"><strong>11/24 optimal · 45.8%</strong><span>Codex: 24/24 · 100%</span></p>
+                    <p class="bench-quality"><strong>24/24 optimal · 100%</strong><span>Codex: 24/24 · 100%</span></p>
                   </div>
                 </section>
               </div>
             </div>
             <p class="bench-context" id="bench-context">
               Each experiment has its own Codex baseline and different timing boundaries.
-              Ratios compare observed latency; MCTS did not achieve equal choice quality.
+              Ratios compare observed latency. The MCTS budget was tuned on these same 24 cases.
             </p>
           </figure>
           <details class="bench-details">
@@ -1512,13 +1512,15 @@ tool_timeout_sec = 5
               <div>
                 <h4><code>route_mcts</code> · 24 paired trees</h4>
                 <p>
-                  32 simulations, depth 3, Jev prior enabled. Each response reported one policy evaluation.
-                  All 13 suboptimal choices are included. Zero final MCTS fallbacks or tool errors.
-                  One 8,370 ms warmup is excluded.
+                  4,096 simulations, depth 3, Jev prior enabled. One policy evaluation per response.
+                  A separate budget check and this timed rerun each reached 24/24 on the same fixtures;
+                  this is not a held-out result. All measured samples are included, with zero final fallbacks or errors.
+                  Budget-selection calls and a 412 ms pre-run check are excluded from these timings.
                 </p>
                 <div class="bench-links">
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/mcts-decision-latency-2026-09-26.md">MCTS report ↗</a>
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/mcts-decision-latency-2026-09-26.json">Raw timings ↗</a>
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/mcts-4096-decision-latency-2026-09-26.md">MCTS report ↗</a>
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/mcts-4096-decision-latency-2026-09-26.json">Raw timings ↗</a>
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/mcts-decision-latency-2026-09-26.md">Earlier 32-simulation run ↗</a>
                 </div>
               </div>
             </div>

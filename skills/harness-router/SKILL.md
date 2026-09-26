@@ -60,7 +60,23 @@ The native MCP server exposes `route_mcts`. Use it only when:
 - real tools are not executed during search
 - bounded search is sufficient
 
-Prefer `simulations=32`, `max_depth=3`, and at most one Jev prior evaluation. Execute only the first selected real action after search. The principal variation is a prediction, not authorization to execute the whole sequence.
+For the three-step benchmark profile with 4, 8, or 16 root choices, use
+`simulations=4096`, `max_depth=3`, `use_jev_prior=true`, and at most one Jev
+prior evaluation. Pass the budget explicitly; the MCP tool's default may be lower.
+This profile requires an MCP server that accepts 4,096 simulations.
+
+On 2026-09-26, this budget reached **24/24 optimal choices** in both a budget check
+and a separate timed rerun of the same 24 fixtures. The original 32-simulation run
+reached 11/24. The budget was tuned on those fixtures; it is not a guarantee of
+optimality on new graphs or a claim that 4,096 is the minimum sufficient budget.
+For other graphs, set depth to cover the relevant horizon and validate the budget.
+
+For explicitly requested benchmarks, repeated calls are allowed. Keep budget
+selection separate from measured trials, retain failures, and report actual
+accuracy alongside latency.
+
+Execute only the first selected real action after search. The principal variation
+is a prediction, not authorization to execute the whole sequence.
 
 ## Details
 

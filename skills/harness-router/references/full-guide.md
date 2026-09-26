@@ -272,15 +272,26 @@ The simulator may predict state, reward, terminal status, and future tool availa
 must not execute real writes, shell commands, browser actions, network mutations, or other
 external side effects during search.
 
-Prefer the default bounded setup:
+For the three-step benchmark profile with 4, 8, or 16 root choices, use the
+validated budget:
 
 ```python
 MCTSConfig(
-    simulations=64,
-    max_depth=4,
+    simulations=4096,
+    max_depth=3,
     max_policy_evaluations=1,
 )
 ```
+
+For the native MCP tool, pass `simulations=4096`, `max_depth=3`, and
+`use_jev_prior=true` explicitly. The MCP server must support budgets up to 4,096;
+its default budget may still be lower.
+
+This profile reached 24/24 optimal choices in a budget check and a separate timed
+rerun of the same 24 fixtures on 2026-09-26. It was tuned on those fixtures, so the
+result is not held out and does not guarantee optimal choices on new graphs.
+The earlier 32-simulation run reached 11/24. Match the search depth to the
+simulation horizon and validate the budget for other workloads.
 
 When a `JevToolRouter` is supplied as `policy_router`, the default budget performs at
 most one policy-router evaluation at the first ambiguous node, normally the root. The rest
