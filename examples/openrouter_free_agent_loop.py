@@ -693,7 +693,7 @@ def _goal_requires_mutation(goal: str) -> bool:
 
 def _target_path_from_goal(goal: str) -> str | None:
     candidates: list[str] = []
-    cleaned = goal.replace("\`", " ").replace('"', " ").replace("'", " ")
+    cleaned = goal.replace("`", " ").replace('"', " ").replace("\'", " ")
     for raw in cleaned.split():
         token = raw.strip(".,:;()[]{}")
         if "/" not in token:
