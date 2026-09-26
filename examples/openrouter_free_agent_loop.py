@@ -180,7 +180,7 @@ class OpenRouterFreePlanner:
             'in the form {"tool":"name","arguments":{...}}.\n\n'
             f"GOAL:\n{state.goal}\n\n"
             f"LATEST OBSERVATION:\n{state.observation}\n\n"
-            f"RECENT ACTIONS:\n{_history_text(state.history)}"
+            f"RECENT ACTIONS:\n{_history_text(state.history[:-1])}"
         )
 
         payload: dict[str, Any] = {
@@ -822,8 +822,6 @@ def _target_path_from_goal(goal: str) -> str | None:
     cleaned = goal.replace("`", " ").replace('"', " ").replace("\'", " ")
     for raw in cleaned.split():
         token = raw.strip(".,:;()[]{}")
-        if "/" not in token:
-            continue
         if token.startswith(("/", "../")):
             continue
         if token.endswith(
