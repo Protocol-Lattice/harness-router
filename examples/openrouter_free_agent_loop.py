@@ -174,7 +174,7 @@ class OpenRouterFreePlanner:
             "Use native tool calling. If native tool calling is unavailable, return only JSON "
             'in the form {"tool":"name","arguments":{...}}.\n\n'
             f"GOAL:\n{state.goal}\n\n"
-            f"LATEST OBSERVATION:\n{state.observation[:8000]}\n\n"
+            f"LATEST OBSERVATION:\n{state.observation}\n\n"
             f"RECENT ACTIONS:\n{_history_text(state.history)}"
         )
 
@@ -300,8 +300,6 @@ class Workspace:
             path = self._safe_path(_string(arguments, "path"))
             if not path.is_file():
                 return "error: file not found"
-            if path.stat().st_size > 200_000:
-                return "error: file too large for this example"
             try:
                 return path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
@@ -456,7 +454,7 @@ class CodingAgent:
                     "Choose a different inspection or make progress with an edit/test."
                 )
                 state.observation = result
-                state.history.append(ActionSummary(tool=tool_name, outcome=result[:500]))
+                state.history.append(ActionSummary(tool=tool_name, outcome=result))
                 print(f"[step {step}] {tool_name} (blocked duplicate)")
                 print(_one_line(result))
                 continue
@@ -476,10 +474,13 @@ class CodingAgent:
                 state.inspection_calls.clear()
 
             state.observation = result
-            state.history.append(ActionSummary(tool=tool_name, outcome=result[:500]))
+            state.history.append(ActionSummary(tool=tool_name, outcome=result))
 
             print(f"[step {step}] {tool_name}")
-            print(_one_line(result))
+            if tool_name == "read_file":
+                print(result)
+            else:
+                print(_one_line(result))
 
         return state
 
@@ -786,7 +787,7 @@ def _history_text(history: Sequence[ActionSummary]) -> str:
     if not history:
         return "(empty)"
     return "\n".join(
-        f"{item.tool}: {item.outcome[:800]}"
+        f"{item.tool}: {item.outcome}"
         for item in history[-5:]
     )
 
