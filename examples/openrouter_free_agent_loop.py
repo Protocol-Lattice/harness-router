@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.util
 import json
 import os
 import shutil
@@ -30,6 +31,7 @@ from harness_router import (
 PLANNER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "openrouter/free"
 MAX_ROUTER_CALLS = 2
+MAX_PLANNER_ATTEMPTS = 2
 
 
 TOOLS: tuple[ToolDescriptor, ...] = (
@@ -134,6 +136,7 @@ class AgentState:
     final_summary: str = ""
     router_enabled: bool = True
     router_calls: int = 0
+    inspection_calls: set[str] = field(default_factory=set)
 
 
 class OpenRouterFreePlanner:
@@ -194,18 +197,38 @@ class OpenRouterFreePlanner:
                 "function": {"name": forced_tool},
             }
 
-        self.calls += 1
-        response = await self.client.post(PLANNER_URL, json=payload)
-        if response.is_error:
-            raise RuntimeError(
-                f"OpenRouter planner failed ({response.status_code}): {response.text[:1200]}"
-            )
+        message: Mapping[str, Any] | None = None
+        action: tuple[str, dict[str, Any]] | None = None
+        for attempt in range(MAX_PLANNER_ATTEMPTS):
+            request_payload = dict(payload)
+            if attempt:
+                request_payload["messages"] = [
+                    *payload["messages"],
+                    {
+                        "role": "user",
+                        "content": (
+                            "RETRY: return exactly one valid tool call. "
+                            "Do not return a list of calls or prose."
+                        ),
+                    },
+                ]
 
-        message = response.json()["choices"][0]["message"]
-        action = _parse_planner_message(message)
+            self.calls += 1
+            response = await self.client.post(PLANNER_URL, json=request_payload)
+            if response.is_error:
+                raise RuntimeError(
+                    f"OpenRouter planner failed ({response.status_code}): "
+                    f"{response.text[:1200]}"
+                )
+
+            message = response.json()["choices"][0]["message"]
+            action = _parse_planner_message(message)
+            if action is not None:
+                break
+
         if action is None:
             raise RuntimeError(
-                "OpenRouter planner did not return a usable tool call: "
+                "OpenRouter planner did not return a usable tool call after retry: "
                 + json.dumps(message, ensure_ascii=False, default=str)[:1200]
             )
 
@@ -329,9 +352,20 @@ class Workspace:
             return f"wrote {path.relative_to(self.root)}"
 
         if tool_name == "run_tests":
+            command = [sys.executable, "-m", "pytest", "-q"]
+            if importlib.util.find_spec("pytest") is None:
+                uv = shutil.which("uv")
+                if uv is None:
+                    state.tests_passed = False
+                    return (
+                        "tests unavailable: pytest is not installed. "
+                        "Install dev dependencies with: uv sync --extra dev"
+                    )
+                command = [uv, "run", "--extra", "dev", "python", "-m", "pytest", "-q"]
+
             try:
                 result = subprocess.run(
-                    [sys.executable, "-m", "pytest", "-q"],
+                    command,
                     cwd=self.root,
                     capture_output=True,
                     text=True,
@@ -394,10 +428,27 @@ class CodingAgent:
                 state.observation = f"error: unknown tool selected: {tool_name}"
                 continue
 
+            fingerprint = _call_fingerprint(tool_name, arguments)
+            if descriptor.category == "inspect" and fingerprint in state.inspection_calls:
+                result = (
+                    f"duplicate inspection blocked: {tool_name} with identical arguments. "
+                    "Choose a different inspection or make progress with an edit/test."
+                )
+                state.observation = result
+                state.history.append(ActionSummary(tool=tool_name, outcome=result[:500]))
+                print(f"[step {step}] {tool_name} (blocked duplicate)")
+                print(_one_line(result))
+                continue
+
             try:
                 result = self.workspace.execute(tool_name, arguments, state)
             except (OSError, ValueError) as exc:
                 result = f"error: {exc}"
+
+            if descriptor.category == "inspect":
+                state.inspection_calls.add(fingerprint)
+            elif descriptor.category == "mutate" and not result.startswith("error:"):
+                state.inspection_calls.clear()
 
             state.observation = result
             state.history.append(ActionSummary(tool=tool_name, outcome=result[:500]))
@@ -509,21 +560,60 @@ def _parse_planner_message(
     try:
         value = json.loads(text)
     except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start < 0 or end <= start:
-            return None
+        value = None
+
+    action = _normalize_action_value(value)
+    if action is not None:
+        return action
+
+    # Free models occasionally wrap one or more tool calls in malformed text,
+    # e.g. [[{"name":"read_file","parameters":{...}}, ...].
+    # Scan for the first independently decodable JSON object/list instead of
+    # crashing the whole agent loop.
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char not in "[{":
+            continue
         try:
-            value = json.loads(text[start : end + 1])
+            candidate, _ = decoder.raw_decode(text[index:])
         except json.JSONDecodeError:
-            return None
+            continue
+        action = _normalize_action_value(candidate)
+        if action is not None:
+            return action
+
+    return None
+
+
+def _normalize_action_value(value: Any) -> tuple[str, dict[str, Any]] | None:
+    if isinstance(value, list):
+        for item in value:
+            action = _normalize_action_value(item)
+            if action is not None:
+                return action
+        return None
 
     if not isinstance(value, Mapping):
         return None
+
+    for wrapper in ("tool_call", "function", "action", "call"):
+        nested = value.get(wrapper)
+        if isinstance(nested, Mapping):
+            action = _normalize_action_value(nested)
+            if action is not None:
+                return action
+
     name = value.get("tool", value.get("name"))
     if not isinstance(name, str) or not name:
         return None
-    arguments = _parse_arguments(value.get("arguments", value.get("args", {})))
+
+    raw_arguments: Any = {}
+    for key in ("arguments", "args", "input", "parameters"):
+        if key in value:
+            raw_arguments = value[key]
+            break
+
+    arguments = _parse_arguments(raw_arguments)
     if arguments is None:
         return None
     return name, arguments
@@ -543,6 +633,16 @@ def _parse_arguments(value: Any) -> dict[str, Any] | None:
             return None
         return parsed if isinstance(parsed, dict) else None
     return None
+
+
+def _call_fingerprint(tool_name: str, arguments: Mapping[str, Any]) -> str:
+    return json.dumps(
+        {"tool": tool_name, "arguments": arguments},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
 
 
 def _tool_by_name(name: str) -> ToolDescriptor | None:
