@@ -405,6 +405,29 @@
       background: var(--panel-strong);
     }
 
+    .legacy-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+      padding: 7px 9px;
+      border: 1px solid rgba(255,66,190,.3);
+      border-radius: 999px;
+      background: var(--pink-soft);
+      color: var(--pink);
+      font: 9px/1 var(--mono);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .legacy-badge::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
     .bench-row {
       display: grid;
       grid-template-columns: 1fr 112px;
@@ -868,33 +891,36 @@ tool_timeout_sec = 5
       <section class="story" id="benchmark">
         <div class="story-no">04</div>
         <div>
-          <h2>Benchmark the <em>whole loop.</em></h2>
+          <div class="legacy-badge">Legacy benchmark · pre-MCP</div>
+          <h2>Keep the old failure <em>in context.</em></h2>
           <p class="story-copy">
-            The first controlled Codex skill benchmark was a failure on cost:
-            the skill-driven integration added requests, fallbacks, tokens, and wall time.
-            We keep that result public because selector latency is meaningless if the harness around it gets worse.
+            These numbers are historical. They were measured <strong>before the native MCP server existed</strong>
+            and while Codex was using the older, much longer skill instructions plus the Python helper flow.
+            The current architecture is different: the skill is intentionally small, obvious steps bypass routing,
+            and Codex can call native <code>route</code> / <code>route_mcts</code> tools directly.
           </p>
         </div>
         <div class="benchmark-panel">
           <div class="bench-row">
-            <span>Normal Codex · mean full-system tokens</span>
+            <span>Legacy baseline · Normal Codex</span>
             <strong>341,755</strong>
           </div>
           <div class="bench-row warn">
-            <span>Old skill-driven Jev integration</span>
+            <span>Legacy long-skill + helper routing</span>
             <strong>717,136</strong>
           </div>
           <div class="bench-row">
-            <span>Main-model requests</span>
+            <span>Legacy main-model requests</span>
             <strong>13.6 → 24.2</strong>
           </div>
           <div class="bench-row">
-            <span>Measured Jev decision latency</span>
+            <span>Jev selector latency in that experiment</span>
             <strong>454 ms</strong>
           </div>
           <div class="bench-note">
-            This benchmark measured the old skill/helper integration, not the new native MCP path.
-            No claim of MCP token savings is made until the full loop is benchmarked.
+            Historical experiment only — it predates native MCP and the shortened skill.
+            These figures do <strong>not</strong> measure the current MCP architecture and should not be used
+            as current performance numbers. A fresh Normal Codex vs native MCP benchmark is still needed.
           </div>
         </div>
       </section>
