@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from harness_router import InvalidProviderResponse, OpenRouterJevProvider
+from harness_router import InvalidProviderResponse, OpenRouterJevProvider, ProviderError
 
 
 @pytest.mark.asyncio
@@ -96,4 +96,48 @@ async def test_provider_preserves_plain_text_state() -> None:
         instructions="Choose",
         criteria={"a": "A", "b": "B"},
     )
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_provider_refuses_api_key_in_routing_payload() -> None:
+    async def handler(_: httpx.Request) -> httpx.Response:
+        raise AssertionError("request must not be sent when payload contains the API key")
+
+    api_key = "sk-or-test-secret-value"
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = OpenRouterJevProvider(api_key=api_key, client=client)
+
+    with pytest.raises(ProviderError, match="refusing to send"):
+        await provider.choose(
+            state=f"user accidentally pasted {api_key}",
+            instructions="Choose",
+            criteria={"a": "A", "b": "B"},
+        )
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_provider_redacts_api_key_from_http_error() -> None:
+    api_key = "sk-or-test-secret-value"
+
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, text=f"bad credential: {api_key}")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = OpenRouterJevProvider(api_key=api_key, client=client)
+
+    with pytest.raises(ProviderError) as exc_info:
+        await provider.choose(
+            state="inspect",
+            instructions="Choose",
+            criteria={"a": "A", "b": "B"},
+        )
+
+    rendered = str(exc_info.value)
+    assert api_key not in rendered
+    assert "[REDACTED]" in rendered
+    assert exc_info.value.__cause__ is None
+
     await client.aclose()
