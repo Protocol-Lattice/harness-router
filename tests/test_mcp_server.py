@@ -96,3 +96,40 @@ async def test_mcp_route_preserves_fallback() -> None:
     assert result.structured_content["tool"] is None
     assert result.structured_content["fallback"] is True
     assert result.structured_content["reason"] == "low_confidence"
+
+
+@pytest.mark.asyncio
+async def test_mcp_lists_route_without_openrouter_key(monkeypatch) -> None:
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    server = create_mcp_server()
+
+    async with Client(server) as client:
+        tools = await client.list_tools()
+
+    assert [tool.name for tool in tools.tools] == ["route"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_missing_key_falls_back_on_route(monkeypatch) -> None:
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    server = create_mcp_server()
+
+    async with Client(server) as client:
+        result = await client.call_tool(
+            "route",
+            {
+                "goal": "Choose the next action",
+                "tools": [
+                    {"name": "read_file", "risk": "low"},
+                    {"name": "search_code", "risk": "low"},
+                ],
+            },
+        )
+
+    assert result.is_error is False
+    assert result.structured_content == {
+        "tool": None,
+        "confidence": 0.0,
+        "fallback": True,
+        "reason": "missing_openrouter_api_key",
+    }
