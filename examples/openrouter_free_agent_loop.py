@@ -34,6 +34,7 @@ DEFAULT_MODEL = "openrouter/free"
 MAX_ROUTER_CALLS = 2
 MAX_PLANNER_ATTEMPTS = 2
 MAX_INSPECTIONS_BEFORE_MUTATION = 3
+DEFAULT_PLANNER_MAX_TOKENS = 16_000
 
 
 TOOLS: tuple[ToolDescriptor, ...] = (
@@ -147,6 +148,7 @@ class OpenRouterFreePlanner:
 
     def __init__(self, api_key: str, model: str, timeout: float) -> None:
         self.model = model
+        self.max_tokens = int(os.getenv("OPENROUTER_MAX_TOKENS", DEFAULT_PLANNER_MAX_TOKENS))
         self.calls = 0
         self.client = httpx.AsyncClient(
             timeout=timeout,
@@ -171,7 +173,10 @@ class OpenRouterFreePlanner:
             "smallest correct edit, run tests after mutations, and only finish after tests pass. "
             "Return exactly one tool call, never a list or batch. Do not repeat the same "
             "read/list/search with identical arguments unless a mutation changed the workspace. "
-            "Use native tool calling. If native tool calling is unavailable, return only JSON "
+            "When using write_file on an existing file, content MUST be the complete final file, "
+            "never a snippet, placeholder, heading-only draft, or partial rewrite. Preserve every "
+            "section not intentionally changed. For rewrite/translation tasks, return the entire "
+            "rewritten file. Use native tool calling. If native tool calling is unavailable, return only JSON "
             'in the form {"tool":"name","arguments":{...}}.\n\n'
             f"GOAL:\n{state.goal}\n\n"
             f"LATEST OBSERVATION:\n{state.observation}\n\n"
@@ -181,7 +186,7 @@ class OpenRouterFreePlanner:
         payload: dict[str, Any] = {
             "model": self.model,
             "temperature": 0,
-            "max_tokens": 4000,
+            "max_tokens": self.max_tokens,
             "messages": [
                 {
                     "role": "system",
@@ -360,6 +365,13 @@ class Workspace:
                 previous = path.read_text(encoding="utf-8")
                 if previous == content:
                     return "error: no-op mutation: generated content matches the existing file"
+                truncation = _destructive_truncation_reason(
+                    previous,
+                    content,
+                    goal=state.goal,
+                )
+                if truncation is not None:
+                    return f"error: destructive write blocked: {truncation}"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             relative = str(path.relative_to(self.root))
@@ -519,10 +531,15 @@ class CodingAgent:
             )
             if target_is_inspected or inspections >= MAX_INSPECTIONS_BEFORE_MUTATION:
                 print("[progress] inspection budget reached -> mutation phase")
+                allowed_mutations = (
+                    {"write_file"}
+                    if _goal_requires_full_file_rewrite(state.goal)
+                    else {"replace_text", "write_file"}
+                )
                 mutation_tools = [
                     tool
                     for tool in TOOLS
-                    if tool.name in {"replace_text", "write_file"}
+                    if tool.name in allowed_mutations
                 ]
                 tool_name, arguments = await self.planner.choose(state, mutation_tools)
                 if target_path is not None:
@@ -695,6 +712,66 @@ def _parse_arguments(value: Any) -> dict[str, Any] | None:
         except json.JSONDecodeError:
             return None
         return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _goal_requires_full_file_rewrite(goal: str) -> bool:
+    lowered = goal.lower()
+    rewrite_terms = (
+        "rewrite",
+        "translate",
+        "przetłumacz",
+        "przetlumacz",
+        "przepisz",
+    )
+    return any(term in lowered for term in rewrite_terms)
+
+
+def _goal_allows_large_shrink(goal: str) -> bool:
+    lowered = goal.lower()
+    shrink_terms = (
+        "shorten",
+        "summarize",
+        "condense",
+        "minify",
+        "reduce",
+        "trim",
+        "skrót",
+        "skrot",
+        "skróć",
+        "skroc",
+        "streść",
+        "stresc",
+    )
+    return any(term in lowered for term in shrink_terms)
+
+
+def _destructive_truncation_reason(
+    before: str,
+    after: str,
+    *,
+    goal: str,
+) -> str | None:
+    if _goal_allows_large_shrink(goal):
+        return None
+
+    before_lines = before.count("\n") + (1 if before else 0)
+    after_lines = after.count("\n") + (1 if after else 0)
+    before_chars = len(before)
+    after_chars = len(after)
+
+    if before_lines < 20 and before_chars < 2_000:
+        return None
+
+    line_ratio = after_lines / max(1, before_lines)
+    char_ratio = after_chars / max(1, before_chars)
+
+    if line_ratio < 0.25 or char_ratio < 0.25:
+        return (
+            f"candidate would shrink the existing file from {before_lines} to "
+            f"{after_lines} lines and {before_chars} to {after_chars} chars. "
+            "write_file must contain the complete final file, not a partial rewrite."
+        )
     return None
 
 
