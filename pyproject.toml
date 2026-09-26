@@ -25,9 +25,14 @@ classifiers = [
 [project.scripts]
 harness-router = "harness_router.cli:main"
 har = "harness_router.cli:main"
+harness-router-mcp = "harness_router.mcp_cli:main"
 
 [project.optional-dependencies]
+mcp = [
+  "mcp>=2,<3",
+]
 dev = [
+  "mcp>=2,<3",
   "mypy>=1.11",
   "pytest>=8",
   "pytest-asyncio>=0.24",
