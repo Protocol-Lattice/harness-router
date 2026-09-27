@@ -1709,53 +1709,106 @@ tool_timeout_sec = 5
         <div class="install-head">
           <div>
             <div class="section-id">$ 06 · Codex PreToolUse</div>
-            <h2>Route before the tool runs.</h2>
+            <h2>Discover once. Route every call.</h2>
           </div>
           <p>
-            A repo-local Codex hook sends the pending tool call plus your explicit tool manifest
-            through <code>har route</code>. Same choice or fallback means Codex continues normally;
-            a different confident choice makes Codex re-plan once.
+            On a fresh Codex startup, Harness Router discovers the MCP inventory immediately,
+            writes the full tool catalog, then reuses that catalog for every
+            <code>PreToolUse</code> decision.
           </p>
         </div>
 
         <div class="install-grid">
           <article class="install-step">
-            <div class="num">01 · HOOK</div>
-            <h3>Already in the repo</h3>
-            <p>Codex discovers the project hook from <code>.codex/hooks.json</code>.</p>
-            <code class="mini-code">.codex/hooks.json
-.codex/hooks/pre_tool_use.py</code>
+            <div class="num">01 · INSTALL</div>
+            <h3>Install Harness Router</h3>
+            <p>Make <code>har</code> available on your PATH and expose the OpenRouter key.</p>
+            <code class="mini-code">uv tool install --force \
+  --with 'mcp&gt;=2,&lt;3' \
+  'git+https://github.com/Protocol-Lattice/harness-router.git@main'
+
+export OPENROUTER_API_KEY="..."</code>
           </article>
 
           <article class="install-step">
-            <div class="num">02 · TOOLS</div>
-            <h3>Pass the full candidate list</h3>
+            <div class="num">02 · COPY HOOK</div>
+            <h3>Add the project hook</h3>
             <p>
-              Codex PreToolUse exposes the pending tool, not the complete runtime registry.
-              Keep native, MCP, and custom candidates in the manifest.
+              Copy the hook config plus both Python scripts into the repository where Codex runs.
+            </p>
+            <code class="mini-code">mkdir -p .codex/hooks
+
+curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks.json \
+  -o .codex/hooks.json
+
+curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks/discover_tools.py \
+  -o .codex/hooks/discover_tools.py
+
+curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks/pre_tool_use.py \
+  -o .codex/hooks/pre_tool_use.py</code>
+          </article>
+
+          <article class="install-step">
+            <div class="num">03 · START</div>
+            <h3>Start a fresh Codex session</h3>
+            <p>
+              <code>SessionStart</code> runs only for <code>startup</code>.
+              It queries <code>codex app-server</code> via <code>mcpServerStatus/list</code>
+              and writes the complete catalog before the model starts using tools.
             </p>
             <code class="mini-code">.codex/harness-router-tools.json
+.codex/harness-router/sessions/&lt;session_id&gt;.json</code>
+          </article>
+        </div>
 
-{
-  "tools": [
-    {"name":"Bash","category":"execute","risk":"medium"},
-    {"name":"apply_patch","category":"mutate","risk":"medium"}
-  ]
-}</code>
+        <div class="install-grid" style="margin-top: 1.25rem;">
+          <article class="install-step">
+            <div class="num">04 · METADATA</div>
+            <h3>Real MCP descriptions</h3>
+            <p>
+              Tool descriptions, input/output schemas, annotations, and server names come from
+              the MCP inventory. <code>PreToolUse</code> never invents descriptions from a tool name.
+            </p>
+            <code class="mini-code">mcpServerStatus/list
+  → tools
+  → description
+  → inputSchema
+  → outputSchema
+  → annotations</code>
           </article>
 
           <article class="install-step">
-            <div class="num">03 · POLICY</div>
-            <h3>Fail open, never bypass approvals</h3>
-            <p>
-              Router failure keeps Codex's original tool. A different routed choice blocks only
-              that pending call and returns a short recommendation to Codex.
-            </p>
-            <code class="mini-code">export OPENROUTER_API_KEY="..."
-
-# optional
-export HARNESS_ROUTER_PRETOOL_TIMEOUT="4"</code>
+            <div class="num">05 · IGNORE</div>
+            <h3>Do not commit generated state</h3>
+            <p>Add the generated catalog and session cache to the target repository's ignore file.</p>
+            <code class="mini-code"># .gitignore
+.codex/harness-router-tools.json
+.codex/harness-router/sessions/</code>
           </article>
+
+          <article class="install-step">
+            <div class="num">06 · VERIFY</div>
+            <h3>Check discovery</h3>
+            <p>
+              If the generated catalog is unexpectedly small, verify that Codex can see the configured MCP servers.
+            </p>
+            <code class="mini-code">codex mcp list
+
+python3 -c 'import json; d=json.load(open(".codex/harness-router-tools.json")); print(d.get("tool_count"))'</code>
+          </article>
+        </div>
+
+        <div class="install-head" style="margin-top: 2rem;">
+          <div>
+            <div class="section-id">Behavior</div>
+            <h2>Fail open. Keep Codex approvals.</h2>
+          </div>
+          <p>
+            Each <code>PreToolUse</code> call sends the pending tool plus the already-discovered
+            candidate set to <code>har route</code>. Same choice, fallback, timeout, or router error
+            means the original call continues. A different confident choice blocks only that call
+            and asks Codex to re-plan once. Sandbox and approval rules remain untouched.
+          </p>
         </div>
       </section>
 
