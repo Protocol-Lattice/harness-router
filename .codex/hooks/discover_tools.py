@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Generate the Codex tool catalog consumed by harness-router.
 
-The catalog is generated at SessionStart from runtime-provided tool definitions
-and optional discovery sources. It is written to .codex/harness-router-tools.json
-and mirrored to a per-session registry for PreToolUse.
+Discovery runs once per Codex session. The first SessionStart for a session
+creates both the generated repository catalog and a per-session catalog.
+Subsequent SessionStart events with the same session_id reuse the existing
+session catalog and do not run discovery again.
 """
 
 from __future__ import annotations
@@ -116,6 +117,13 @@ def _write_catalog(path: Path, *, session_id: str, tools: list[dict[str, Any]]) 
     )
 
 
+def _load_catalog(path: Path) -> list[dict[str, Any]]:
+    try:
+        return _normalize(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -125,6 +133,31 @@ def main() -> int:
     cwd = str(payload.get("cwd") or os.getcwd())
     root = _repo_root(cwd)
     session_id = str(payload.get("session_id") or "default")
+
+    generated_catalog = root / ".codex" / "harness-router-tools.json"
+    session_catalog = (
+        root / ".codex" / "harness-router" / "sessions" / f"{session_id}.json"
+    )
+
+    existing_tools = _load_catalog(session_catalog)
+    if existing_tools:
+        _write_catalog(
+            generated_catalog,
+            session_id=session_id,
+            tools=existing_tools,
+        )
+        print(
+            json.dumps(
+                {
+                    "tool_count": len(existing_tools),
+                    "catalog": str(generated_catalog),
+                    "session_catalog": str(session_catalog),
+                    "discovered": False,
+                    "reason": "session catalog already exists",
+                }
+            )
+        )
+        return 0
 
     runtime_tools = _normalize(
         payload.get("tools")
@@ -144,11 +177,6 @@ def main() -> int:
     discovered_tools = _discover_command()
     tools = _merge(discovered_tools, env_tools, runtime_tools)
 
-    generated_catalog = root / ".codex" / "harness-router-tools.json"
-    session_catalog = (
-        root / ".codex" / "harness-router" / "sessions" / f"{session_id}.json"
-    )
-
     _write_catalog(generated_catalog, session_id=session_id, tools=tools)
     _write_catalog(session_catalog, session_id=session_id, tools=tools)
 
@@ -158,6 +186,7 @@ def main() -> int:
                 "tool_count": len(tools),
                 "catalog": str(generated_catalog),
                 "session_catalog": str(session_catalog),
+                "discovered": True,
             }
         )
     )
