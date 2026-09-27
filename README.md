@@ -606,7 +606,9 @@ PreToolUse
         +--> pending tool + full discovered catalog
         |
         v
-har route
+harness-router-mcp
+        |
+        +--> MCP tools/call: route
         |
         +--> same tool / fallback / error -> allow
         \--> different confident tool -> deny once + ask Codex to re-plan
@@ -636,7 +638,7 @@ Generated state is ignored by Git:
 
 ### Install the hook in another repository
 
-First install Harness Router so `har` is available:
+First install Harness Router with MCP support so `harness-router-mcp` is available:
 
 ~~~bash
 uv tool install --force --with 'mcp>=2,<3' \
@@ -712,8 +714,8 @@ codex mcp list
 ### Optional environment variables
 
 ~~~bash
-# Use a different harness-router executable.
-export HARNESS_ROUTER_BIN="$HOME/.local/bin/har"
+# Use a different harness-router MCP executable.
+export HARNESS_ROUTER_MCP_BIN="$HOME/.local/bin/harness-router-mcp"
 
 # Bound the PreToolUse routing call.
 export HARNESS_ROUTER_PRETOOL_TIMEOUT="4"
@@ -734,7 +736,7 @@ export HARNESS_ROUTER_CODEX_TOOLS_JSON='{
 }'
 ~~~
 
-The hook is intentionally fail-open. If discovery, `har route`, or the provider fails, Codex keeps its original tool choice. Harness Router never bypasses Codex sandboxing, approval prompts, or execution permissions.
+The hook is intentionally fail-open. If discovery, `harness-router-mcp`, the MCP `route` call, or the provider fails, Codex keeps its original tool choice. Harness Router never bypasses Codex sandboxing, approval prompts, or execution permissions.
 
 
 ## Codex skill

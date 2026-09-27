@@ -1722,7 +1722,7 @@ tool_timeout_sec = 5
           <article class="install-step">
             <div class="num">01 · INSTALL</div>
             <h3>Install Harness Router</h3>
-            <p>Make <code>har</code> available on your PATH and expose the OpenRouter key.</p>
+            <p>Make <code>harness-router-mcp</code> available on your PATH and expose the OpenRouter key.</p>
             <code class="mini-code">uv tool install --force \
   --with 'mcp&gt;=2,&lt;3' \
   'git+https://github.com/Protocol-Lattice/harness-router.git@main'
@@ -1761,14 +1761,6 @@ curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/mai
           </article>
         </div>
 
-        <div class="install-grid" style="margin-top: 1.25rem;">
-
-
-
-
-
-        </div>
-
         <div class="install-head" style="margin-top: 2rem;">
           <div>
             <div class="section-id">Behavior</div>
@@ -1776,7 +1768,7 @@ curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/mai
           </div>
           <p>
             Each <code>PreToolUse</code> call sends the pending tool plus the already-discovered
-            candidate set to <code>har route</code>. Same choice, fallback, timeout, or router error
+            candidate set to <code>harness-router-mcp</code> with an MCP <code>tools/call</code> to <code>route</code>. Same choice, fallback, timeout, or router error
             means the original call continues. A different confident choice blocks only that call
             and asks Codex to re-plan once. Sandbox and approval rules remain untouched.
           </p>

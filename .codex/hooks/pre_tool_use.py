@@ -3,7 +3,7 @@
 
 Loads the generated tool catalog produced by discover_tools.py, locally
 shortlists tools similar to the pending call, and sends only that compact
-candidate set to harness-router. Failures are deliberately fail-open.
+candidate set to the native harness-router MCP server. Failures are deliberately fail-open.
 """
 
 from __future__ import annotations
@@ -298,13 +298,165 @@ def _similar_tools(
     ]
 
 
-def _router_binary() -> str | None:
+def _mcp_binary() -> str | None:
     return (
-        os.environ.get("HARNESS_ROUTER_BIN")
-        or shutil.which("har")
-        or shutil.which("harness-router")
+        os.environ.get("HARNESS_ROUTER_MCP_BIN")
+        or shutil.which("harness-router-mcp")
     )
 
+
+def _mcp_send(proc: subprocess.Popen[str], message: dict[str, Any]) -> None:
+    if proc.stdin is None:
+        raise RuntimeError("MCP stdin unavailable")
+    proc.stdin.write(json.dumps(message, separators=(",", ":")) + "\n")
+    proc.stdin.flush()
+
+
+def _mcp_read_response(
+    proc: subprocess.Popen[str],
+    request_id: int,
+    deadline: float,
+) -> dict[str, Any]:
+    import select
+    import time
+
+    if proc.stdout is None:
+        raise RuntimeError("MCP stdout unavailable")
+
+    while time.monotonic() < deadline:
+        remaining = max(0.0, deadline - time.monotonic())
+        ready, _, _ = select.select([proc.stdout], [], [], remaining)
+        if not ready:
+            break
+
+        line = proc.stdout.readline()
+        if not line:
+            break
+
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        if message.get("id") != request_id:
+            continue
+        if "error" in message:
+            raise RuntimeError(str(message["error"]))
+
+        result = message.get("result")
+        return result if isinstance(result, dict) else {}
+
+    raise TimeoutError("timed out waiting for harness-router-mcp")
+
+
+def _mcp_route(
+    *,
+    binary: str,
+    cwd: str,
+    goal: str,
+    observation: str,
+    candidates: list[dict[str, Any]],
+    timeout: float,
+) -> dict[str, Any]:
+    import time
+
+    proc = subprocess.Popen(
+        [binary],
+        cwd=cwd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        env=os.environ.copy(),
+    )
+
+    try:
+        deadline = time.monotonic() + timeout
+
+        _mcp_send(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {
+                        "name": "harness-router-codex-hook",
+                        "version": "1",
+                    },
+                },
+            },
+        )
+        _mcp_read_response(proc, 1, deadline)
+
+        _mcp_send(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+                "params": {},
+            },
+        )
+
+        route_tools = [
+            {
+                "name": tool["name"],
+                "description": str(tool.get("description", "")),
+                "category": tool.get("category"),
+                "risk": str(tool.get("risk", "medium")),
+            }
+            for tool in candidates
+        ]
+
+        _mcp_send(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "route",
+                    "arguments": {
+                        "goal": goal,
+                        "observation": observation,
+                        "tools": route_tools,
+                    },
+                },
+            },
+        )
+        response = _mcp_read_response(proc, 2, deadline)
+
+        structured = response.get("structuredContent")
+        if isinstance(structured, dict):
+            return structured
+
+        # Compatibility fallback for MCP clients/servers that only return
+        # JSON text content.
+        for item in response.get("content", []):
+            if not isinstance(item, dict) or item.get("type") != "text":
+                continue
+            text = item.get("text")
+            if not isinstance(text, str):
+                continue
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+
+        return {}
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=0.5)
 
 def main() -> int:
     try:
@@ -356,7 +508,7 @@ def main() -> int:
         f"tool_input={_compact_tool_input(payload.get('tool_input'))}"
     )[:MAX_OBSERVATION_CHARS]
 
-    binary = _router_binary()
+    binary = _mcp_binary()
     if not binary:
         _allow()
         return 0
@@ -369,34 +521,15 @@ def main() -> int:
     )
 
     try:
-        p = subprocess.run(
-            [
-                binary,
-                "route",
-                "--goal",
-                goal,
-                "--observation",
-                observation,
-                "--tools-json",
-                json.dumps(candidates, ensure_ascii=False, separators=(",", ":")),
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
+        result = _mcp_route(
+            binary=binary,
+            cwd=cwd,
+            goal=goal,
+            observation=observation,
+            candidates=candidates,
             timeout=timeout,
-            env=os.environ.copy(),
         )
-    except (OSError, subprocess.SubprocessError, ValueError):
-        _allow()
-        return 0
-
-    if p.returncode != 0:
-        _allow()
-        return 0
-
-    try:
-        result = json.loads(p.stdout.strip().splitlines()[-1])
-    except (IndexError, json.JSONDecodeError):
+    except (OSError, subprocess.SubprocessError, TimeoutError, RuntimeError, ValueError):
         _allow()
         return 0
 
