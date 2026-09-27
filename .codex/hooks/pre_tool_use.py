@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 """Codex PreToolUse bridge for harness-router.
 
-Codex sends the hook the currently selected tool, but not the whole runtime tool
-registry. This bridge loads the candidate registry from
-.codex/harness-router-tools.json (or HARNESS_ROUTER_CODEX_TOOLS_FILE), adds the
-currently observed tool if necessary, asks harness-router to route the choice,
-and blocks only when the router confidently selects a different tool.
-
-Failures are deliberately fail-open: Codex keeps its original tool choice.
+Loads the full per-session tool catalog created by SessionStart, merges the
+currently observed tool, and sends the complete candidate set to harness-router.
+Failures are deliberately fail-open.
 """
 
 from __future__ import annotations
@@ -35,22 +31,21 @@ def _allow() -> None:
     _emit({"hookSpecificOutput": {"hookEventName": "PreToolUse"}})
 
 
-def _deny(*, selected: str, current: str, confidence: float | None) -> None:
+def _deny(*, selected: str, current: str, confidence: float | None, tool_count: int) -> None:
     confidence_text = f" at confidence {confidence:.3f}" if confidence is not None else ""
-    reason = (
-        f"harness-router selected {selected!r}{confidence_text} instead of "
-        f"the pending Codex tool {current!r}"
-    )
     _emit(
         {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "deny",
-                "permissionDecisionReason": reason,
+                "permissionDecisionReason": (
+                    f"harness-router selected {selected!r}{confidence_text} instead of "
+                    f"the pending Codex tool {current!r}"
+                ),
                 "additionalContext": (
-                    f"Harness-router recommends using {selected!r} instead of "
-                    f"{current!r} for the next step. Re-plan once, preserve the "
-                    "original user goal, and keep normal Codex sandbox/approval rules."
+                    f"Harness Router evaluated {tool_count} tools from the current "
+                    f"session catalog and recommends {selected!r} instead of {current!r}. "
+                    "Re-plan once and preserve the original user goal."
                 ),
             }
         }
@@ -59,52 +54,58 @@ def _deny(*, selected: str, current: str, confidence: float | None) -> None:
 
 def _repo_root(cwd: str) -> Path:
     try:
-        completed = subprocess.run(
+        p = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
             check=True,
             capture_output=True,
             text=True,
             timeout=1.0,
         )
-        root = completed.stdout.strip()
-        if root:
-            return Path(root)
+        if p.stdout.strip():
+            return Path(p.stdout.strip())
     except (OSError, subprocess.SubprocessError):
         pass
     return Path(cwd)
 
 
-def _load_tools(root: Path) -> list[dict[str, Any]]:
-    configured = os.environ.get("HARNESS_ROUTER_CODEX_TOOLS_FILE")
-    manifest = Path(configured).expanduser() if configured else root / ".codex" / "harness-router-tools.json"
-
-    try:
-        raw = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+def _normalize(raw: Any) -> list[dict[str, Any]]:
+    if isinstance(raw, dict):
+        raw = raw.get("tools", [])
+    if not isinstance(raw, list):
         return []
 
-    items = raw.get("tools", []) if isinstance(raw, dict) else raw
-    if not isinstance(items, list):
-        return []
-
-    tools: list[dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for item in items:
+    for item in raw:
         if not isinstance(item, dict):
             continue
         name = str(item.get("name", "")).strip()
         if not name or name in seen:
             continue
         seen.add(name)
-        tools.append(
+        out.append(
             {
                 "name": name,
                 "description": str(item.get("description", "")).strip(),
                 "category": item.get("category"),
                 "risk": str(item.get("risk", "medium")).lower(),
+                "input_schema": item.get("input_schema") or item.get("parameters"),
             }
         )
-    return tools
+    return out
+
+
+def _load_tools(root: Path, session_id: str) -> tuple[list[dict[str, Any]], Path]:
+    session = root / ".codex" / "harness-router" / "sessions" / f"{session_id}.json"
+    fallback = root / ".codex" / "harness-router-tools.json"
+    for path in (session, fallback):
+        try:
+            tools = _normalize(json.loads(path.read_text(encoding="utf-8")))
+            if tools:
+                return tools, session
+        except (OSError, json.JSONDecodeError):
+            pass
+    return [], session
 
 
 def _infer_current_tool(tool_name: str) -> dict[str, Any]:
@@ -113,27 +114,35 @@ def _infer_current_tool(tool_name: str) -> dict[str, Any]:
         category, risk = "execute", "medium"
     elif "patch" in lowered or "write" in lowered or "edit" in lowered:
         category, risk = "mutate", "medium"
-    elif "read" in lowered or "search" in lowered or "list" in lowered:
+    elif "read" in lowered or "search" in lowered or "list" in lowered or "fetch" in lowered:
         category, risk = "inspect", "low"
-    elif "spawn" in lowered or "agent" in lowered:
-        category, risk = "execute", "medium"
     else:
         category, risk = "general", "medium"
-
     return {
         "name": tool_name,
         "description": f"Codex runtime tool observed by PreToolUse: {tool_name}",
         "category": category,
         "risk": risk,
+        "input_schema": None,
     }
+
+
+def _persist_session(path: Path, session_id: str, tools: list[dict[str, Any]]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"session_id": session_id, "tools": tools}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
 
 
 def _extract_text(value: Any) -> str:
     if isinstance(value, str):
         return value.strip()
     if isinstance(value, list):
-        parts = [_extract_text(item) for item in value]
-        return " ".join(part for part in parts if part).strip()
+        return " ".join(filter(None, (_extract_text(x) for x in value))).strip()
     if isinstance(value, dict):
         for key in ("text", "input_text", "content"):
             if key in value:
@@ -147,11 +156,6 @@ def _find_user_text(value: Any) -> str:
     if isinstance(value, dict):
         if value.get("role") == "user":
             text = _extract_text(value.get("content"))
-            if text:
-                return text
-        payload = value.get("payload")
-        if payload is not None:
-            text = _find_user_text(payload)
             if text:
                 return text
         for child in value.values():
@@ -169,14 +173,13 @@ def _find_user_text(value: Any) -> str:
 def _goal_from_transcript(path_value: Any) -> str:
     if not isinstance(path_value, str) or not path_value:
         return ""
-
-    path = Path(path_value)
     try:
-        with path.open("rb") as handle:
-            handle.seek(0, 2)
-            size = handle.tell()
-            handle.seek(max(0, size - MAX_TRANSCRIPT_BYTES))
-            chunk = handle.read().decode("utf-8", errors="ignore")
+        path = Path(path_value)
+        with path.open("rb") as h:
+            h.seek(0, 2)
+            size = h.tell()
+            h.seek(max(0, size - MAX_TRANSCRIPT_BYTES))
+            chunk = h.read().decode("utf-8", errors="ignore")
     except OSError:
         return ""
 
@@ -191,19 +194,16 @@ def _goal_from_transcript(path_value: Any) -> str:
     return ""
 
 
-def _compact_tool_input(tool_input: Any) -> str:
+def _compact_tool_input(value: Any) -> str:
     try:
-        rendered = json.dumps(tool_input, ensure_ascii=False, separators=(",", ":"))
+        text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     except (TypeError, ValueError):
-        rendered = repr(tool_input)
-    return rendered[:600]
+        text = repr(value)
+    return text[:600]
 
 
 def _router_binary() -> str | None:
-    override = os.environ.get("HARNESS_ROUTER_BIN")
-    if override:
-        return override
-    return shutil.which("har") or shutil.which("harness-router")
+    return os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("har") or shutil.which("harness-router")
 
 
 def main() -> int:
@@ -229,18 +229,18 @@ def main() -> int:
 
     cwd = str(payload.get("cwd") or os.getcwd())
     root = _repo_root(cwd)
-    tools = _load_tools(root)
-    if not any(tool.get("name") == current for tool in tools):
+    session_id = str(payload.get("session_id") or "default")
+    tools, session_path = _load_tools(root, session_id)
+
+    if not any(t.get("name") == current for t in tools):
         tools.append(_infer_current_tool(current))
+        _persist_session(session_path, session_id, tools)
 
     if len(tools) < 2:
         _allow()
         return 0
 
-    goal = _goal_from_transcript(payload.get("transcript_path"))
-    if not goal:
-        goal = "Choose the best next Codex tool for the current task."
-
+    goal = _goal_from_transcript(payload.get("transcript_path")) or "Choose the best next Codex tool for the current task."
     observation = (
         f"Codex is about to call {current!r}. "
         f"tool_input={_compact_tool_input(payload.get('tool_input'))}"
@@ -253,7 +253,7 @@ def main() -> int:
 
     timeout = float(os.environ.get("HARNESS_ROUTER_PRETOOL_TIMEOUT", DEFAULT_TIMEOUT_SECONDS))
     try:
-        completed = subprocess.run(
+        p = subprocess.run(
             [
                 binary,
                 "route",
@@ -274,32 +274,24 @@ def main() -> int:
         _allow()
         return 0
 
-    if completed.returncode != 0:
+    if p.returncode != 0:
         _allow()
         return 0
 
     try:
-        result = json.loads(completed.stdout.strip().splitlines()[-1])
+        result = json.loads(p.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError):
         _allow()
         return 0
 
     selected = result.get("tool")
-    if result.get("fallback") or not isinstance(selected, str) or not selected:
-        _allow()
-        return 0
-
-    if selected == current:
+    if result.get("fallback") or not isinstance(selected, str) or not selected or selected == current:
         _allow()
         return 0
 
     confidence_value = result.get("confidence")
-    confidence = (
-        float(confidence_value)
-        if isinstance(confidence_value, (int, float))
-        else None
-    )
-    _deny(selected=selected, current=current, confidence=confidence)
+    confidence = float(confidence_value) if isinstance(confidence_value, (int, float)) else None
+    _deny(selected=selected, current=current, confidence=confidence, tool_count=len(tools))
     return 0
 
 

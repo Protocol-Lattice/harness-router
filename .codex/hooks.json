@@ -1,6 +1,18 @@
 {
-  "description": "Route ambiguous Codex tool calls through harness-router before execution.",
+  "description": "Route Codex tool calls through harness-router with a per-session tool registry.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/discover_tools.py\"",
+            "timeout": 5,
+            "statusMessage": "Building Harness Router tool catalog"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "hooks": [
