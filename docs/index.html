@@ -404,6 +404,129 @@
 
     .decision-card.active b span:last-child { color: var(--pink); }
 
+    .jev-intro { min-width: 0; }
+
+    .jev-saving {
+      display: block;
+      margin: 28px 0 8px;
+      color: var(--pink);
+      font: 500 clamp(70px, 8vw, 108px)/.9 var(--serif);
+      letter-spacing: -.065em;
+    }
+
+    .jev-saving-label {
+      margin: 0 0 24px;
+      font: 500 18px/1.5 var(--sans);
+    }
+
+    .jev-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 24px;
+      margin-top: 25px;
+      font: 11px/1.6 var(--mono);
+    }
+
+    .jev-links a,
+    .jev-source a {
+      text-decoration: underline;
+      text-underline-offset: 4px;
+      text-decoration-color: rgba(255,66,190,.45);
+    }
+
+    .jev-links a:hover,
+    .jev-source a:hover { color: var(--pink); }
+
+    .jev-links a:focus-visible,
+    .jev-source a:focus-visible,
+    .nav-links a:focus-visible {
+      outline: 2px solid var(--pink);
+      outline-offset: 5px;
+    }
+
+    .jev-benchmark {
+      min-width: 0;
+      margin: 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel-strong);
+      overflow: hidden;
+    }
+
+    .jev-benchmark figcaption {
+      padding: 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .jev-benchmark h3 {
+      margin: 0 0 6px;
+      font: 500 14px/1.5 var(--mono);
+    }
+
+    .jev-chart-unit,
+    .jev-source {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .jev-cost-row { padding: 24px; }
+    .jev-cost-row + .jev-cost-row { border-top: 1px solid var(--line-soft); }
+    .jev-cost-row.highlight { background: rgba(255,66,190,.045); }
+
+    .jev-model {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      font: 500 12px/1.5 var(--mono);
+    }
+
+    .jev-model span { color: var(--muted); font-size: 10px; }
+    .jev-cost-row.highlight .jev-model strong { color: var(--pink); }
+
+    .jev-cost {
+      margin: 16px 0;
+      font: 500 32px/1.15 var(--mono);
+      letter-spacing: -.055em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .jev-cost-track {
+      height: 7px;
+      overflow: hidden;
+      border-radius: 2px;
+      background: rgba(255,255,255,.06);
+    }
+
+    .jev-cost-fill {
+      display: block;
+      height: 100%;
+      width: 100%;
+      background: #797180;
+    }
+
+    /* Linear cost scale: $0.0004 / $0.1174, using the published rounded values. */
+    .jev-cost-row.highlight .jev-cost-fill {
+      width: calc(100% * .0004 / .1174);
+      background: var(--pink);
+    }
+
+    .jev-reduction {
+      margin: 0;
+      padding: 18px 24px;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .jev-reduction strong { color: var(--pink); }
+
+    .jev-source { padding: 20px 24px; border-top: 1px solid var(--line); }
+    .jev-source a { color: var(--text); }
+
     .benchmark-intro { grid-column: 2 / -1; }
     .benchmark-intro .story-copy { max-width: 720px; margin-bottom: 0; }
 
@@ -880,11 +1003,11 @@
       }
 
       .nav-links {
-        gap: 0;
+        gap: 16px;
         font-size: 10px;
       }
 
-      .nav-links a:not(:last-child) { display: none; }
+      .nav-links a:not(:last-child):not([href="#why-jev"]) { display: none; }
 
       .hero {
         padding: 54px 0 52px;
@@ -998,6 +1121,7 @@
       }
 
       .terminal,
+      .jev-benchmark,
       .benchmark-panel,
       .mcts-tree {
         width: 100%;
@@ -1011,6 +1135,11 @@
       }
 
       .benchmark-intro { grid-column: 1 / -1; }
+      .jev-saving { font-size: clamp(72px, 23vw, 100px); }
+      .jev-benchmark figcaption,
+      .jev-cost-row { padding: 22px 20px; }
+      .jev-reduction,
+      .jev-source { padding: 18px 20px; }
       .bench-toolbar { padding: 20px; }
       .bench-controls { width: 100%; }
       .bench-controls button { flex: 1; padding: 10px 12px; }
@@ -1172,7 +1301,8 @@
         Harness Router
       </a>
       <div class="nav-links">
-        <a href="#why">Why</a>
+        <a href="#why">Approach</a>
+        <a href="#why-jev">Why Jev?</a>
         <a href="#mcp">MCP</a>
         <a href="#mcts">MCTS</a>
         <a href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">
@@ -1267,8 +1397,55 @@
         </div>
       </section>
 
-      <section class="story" id="mcp">
+      <section class="story" id="why-jev" aria-labelledby="why-jev-title">
         <div class="story-no">02</div>
+        <div class="jev-intro">
+          <div class="benchmark-badge">TypeSafe AI · Workflow benchmark</div>
+          <h2 id="why-jev-title">Why <em>Jev?</em></h2>
+          <strong class="jev-saving">≈294×</strong>
+          <p class="jev-saving-label">cheaper than Sonnet 5 on these workflows.</p>
+          <p class="story-copy">
+            Jev and Sonnet 5 both reach <strong>67.8% mean accuracy</strong> in TypeSafe AI’s
+            published workflow evals. Jev’s reported cost is <strong>$0.0004 per case</strong>,
+            compared with $0.1174 for Sonnet 5 — a <strong>293.5× cost ratio</strong>
+            using the published rounded prices.
+          </p>
+          <p class="story-copy">
+            That is why harness-router uses Jev for closed tool choices:
+            structured decisions with confidence, while your planner handles the reasoning.
+          </p>
+          <div class="jev-links">
+            <a href="https://evals.typesafe.ai/" target="_blank" rel="noreferrer">Explore TypeSafe’s benchmark ↗</a>
+            <a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev" target="_blank" rel="noreferrer">Read the methodology ↗</a>
+          </div>
+        </div>
+        <figure class="jev-benchmark" aria-labelledby="jev-chart-title" aria-describedby="jev-chart-unit jev-source">
+          <figcaption>
+            <h3 id="jev-chart-title">Same reported accuracy. Lower cost.</h3>
+            <p class="jev-chart-unit" id="jev-chart-unit">Mean cost per case · USD · linear scale · lower is better</p>
+          </figcaption>
+          <div class="jev-cost-row highlight">
+            <div class="jev-model"><strong>TypeSafe AI · Jev</strong><span>67.8% accuracy</span></div>
+            <p class="jev-cost">$0.0004</p>
+            <div class="jev-cost-track" aria-hidden="true"><span class="jev-cost-fill"></span></div>
+          </div>
+          <div class="jev-cost-row">
+            <div class="jev-model"><strong>Anthropic · Sonnet 5</strong><span>67.8% accuracy</span></div>
+            <p class="jev-cost">$0.1174</p>
+            <div class="jev-cost-track" aria-hidden="true"><span class="jev-cost-fill"></span></div>
+          </div>
+          <p class="jev-reduction">Jev costs about <strong>99.66% less</strong> per case.</p>
+          <p class="jev-source" id="jev-source">
+            Source: <a href="https://evals.typesafe.ai/" target="_blank" rel="noreferrer">TypeSafe AI workflow evals</a>,
+            checked 27 Sep 2026. Rounded results, averaged equally across four workflows using
+            model-consensus reference labels and default reasoning settings. Vendor-reported
+            workflow results; harness-router’s end-to-end savings depend on your workload.
+          </p>
+        </figure>
+      </section>
+
+      <section class="story" id="mcp">
+        <div class="story-no">03</div>
         <div>
           <h2>Native MCP. <em>One tiny choice.</em></h2>
           <p class="story-copy">
@@ -1298,7 +1475,7 @@ tool_timeout_sec = 5
       </section>
 
       <section class="story" id="mcts">
-        <div class="story-no">03</div>
+        <div class="story-no">04</div>
         <div>
           <h2>When one move is not enough, <em>search.</em></h2>
           <p class="story-copy">
@@ -1329,7 +1506,7 @@ tool_timeout_sec = 5
       </section>
 
       <section class="story" id="benchmark">
-        <div class="story-no">04</div>
+        <div class="story-no">05</div>
         <div class="benchmark-intro">
           <div class="benchmark-badge">Decision latency · 26 Sep 2026</div>
           <h2>Time to choose <em>a tool.</em></h2>
@@ -1531,7 +1708,7 @@ tool_timeout_sec = 5
       <section class="install-section" id="install">
         <div class="install-head">
           <div>
-            <div class="section-id">$ 05 · Install</div>
+            <div class="section-id">$ 06 · Install</div>
             <h2>Three steps. Then get out of the way.</h2>
           </div>
           <p>
@@ -1572,7 +1749,7 @@ codex mcp list</code>
       </section>
 
       <section class="cta">
-        <div class="section-id">$ 06 · The rule</div>
+        <div class="section-id">$ 07 · The rule</div>
         <h2>Route less.<br><em>Choose better.</em></h2>
         <p>
           Use the model where reasoning matters. Use Jev where the choice is closed.
