@@ -24,6 +24,9 @@ MAX_OBSERVATION_CHARS = 900
 MAX_TRANSCRIPT_BYTES = 256_000
 DEFAULT_TIMEOUT_SECONDS = 4.0
 DEFAULT_MAX_CANDIDATES = 8
+DEFAULT_MCTS_THRESHOLD = 0.80
+DEFAULT_MCTS_SIMULATIONS = 64
+DEFAULT_MCTS_MAX_DEPTH = 3
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -34,7 +37,14 @@ def _allow() -> None:
     _emit({"hookSpecificOutput": {"hookEventName": "PreToolUse"}})
 
 
-def _deny(*, selected: str, current: str, confidence: float | None, tool_count: int) -> None:
+def _deny(
+    *,
+    selected: str,
+    current: str,
+    confidence: float | None,
+    tool_count: int,
+    routing_mode: str = "route",
+) -> None:
     confidence_text = f" at confidence {confidence:.3f}" if confidence is not None else ""
     _emit(
         {
@@ -46,8 +56,8 @@ def _deny(*, selected: str, current: str, confidence: float | None, tool_count: 
                     f"the pending Codex tool {current!r}"
                 ),
                 "additionalContext": (
-                    f"Harness Router evaluated {tool_count} similar tools shortlisted "
-                    f"from the generated session catalog and recommends {selected!r} "
+                    f"Harness Router ({routing_mode}) evaluated {tool_count} similar tools "
+                    f"shortlisted from the generated session catalog and recommends {selected!r} "
                     f"instead of {current!r}. Re-plan once and preserve the original user goal."
                 ),
             }
@@ -349,15 +359,121 @@ def _mcp_read_response(
     raise TimeoutError("timed out waiting for harness-router-mcp")
 
 
-def _mcp_route(
+def _extract_mcp_tool_result(response: dict[str, Any]) -> dict[str, Any]:
+    structured = response.get("structuredContent")
+    if isinstance(structured, dict):
+        return structured
+
+    for item in response.get("content", []):
+        if not isinstance(item, dict) or item.get("type") != "text":
+            continue
+        text = item.get("text")
+        if not isinstance(text, str):
+            continue
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+
+    return {}
+
+
+def _build_mcts_graph(
+    *,
+    cwd: str,
+    goal: str,
+    observation: str,
+    current: str,
+    candidates: list[dict[str, Any]],
+    route_result: dict[str, Any],
+    timeout: float,
+) -> dict[str, Any] | None:
+    command = os.environ.get("HARNESS_ROUTER_PRETOOL_MCTS_GRAPH_CMD", "").strip()
+    if not command:
+        return None
+
+    import shlex
+
+    payload = {
+        "goal": goal,
+        "observation": observation,
+        "current_tool": current,
+        "candidates": candidates,
+        "route_result": route_result,
+    }
+
+    try:
+        proc = subprocess.run(
+            shlex.split(command),
+            cwd=cwd,
+            input=json.dumps(payload, ensure_ascii=False),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=os.environ.copy(),
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+    if proc.returncode != 0:
+        return None
+
+    try:
+        graph = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(graph, dict):
+        return None
+    if not isinstance(graph.get("root_state"), str):
+        return None
+    if not isinstance(graph.get("states"), list):
+        return None
+    if not isinstance(graph.get("transitions"), list):
+        return None
+    return graph
+
+
+def _should_try_mcts(
+    result: dict[str, Any],
+    candidate_count: int,
+) -> bool:
+    if candidate_count < 3:
+        return False
+
+    try:
+        threshold = float(
+            os.environ.get(
+                "HARNESS_ROUTER_PRETOOL_MCTS_THRESHOLD",
+                DEFAULT_MCTS_THRESHOLD,
+            )
+        )
+    except ValueError:
+        threshold = DEFAULT_MCTS_THRESHOLD
+
+    confidence = result.get("confidence")
+    confidence_value = (
+        float(confidence)
+        if isinstance(confidence, (int, float))
+        else 0.0
+    )
+
+    return bool(result.get("fallback")) or confidence_value < threshold
+
+
+def _mcp_route_hybrid(
     *,
     binary: str,
     cwd: str,
     goal: str,
     observation: str,
+    current: str,
     candidates: list[dict[str, Any]],
     timeout: float,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], str]:
     import time
 
     proc = subprocess.Popen(
@@ -427,28 +543,54 @@ def _mcp_route(
                 },
             },
         )
-        response = _mcp_read_response(proc, 2, deadline)
+        route_response = _mcp_read_response(proc, 2, deadline)
+        route_result = _extract_mcp_tool_result(route_response)
 
-        structured = response.get("structuredContent")
-        if isinstance(structured, dict):
-            return structured
+        if not _should_try_mcts(route_result, len(candidates)):
+            return route_result, "route"
 
-        # Compatibility fallback for MCP clients/servers that only return
-        # JSON text content.
-        for item in response.get("content", []):
-            if not isinstance(item, dict) or item.get("type") != "text":
-                continue
-            text = item.get("text")
-            if not isinstance(text, str):
-                continue
-            try:
-                parsed = json.loads(text)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(parsed, dict):
-                return parsed
+        remaining = max(0.1, deadline - time.monotonic())
+        graph = _build_mcts_graph(
+            cwd=cwd,
+            goal=goal,
+            observation=observation,
+            current=current,
+            candidates=candidates,
+            route_result=route_result,
+            timeout=remaining,
+        )
+        if graph is None:
+            return route_result, "route"
 
-        return {}
+        simulations = graph.get("simulations", DEFAULT_MCTS_SIMULATIONS)
+        max_depth = graph.get("max_depth", DEFAULT_MCTS_MAX_DEPTH)
+        use_jev_prior = graph.get("use_jev_prior", True)
+
+        _mcp_send(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "route_mcts",
+                    "arguments": {
+                        "root_state": graph["root_state"],
+                        "states": graph["states"],
+                        "transitions": graph["transitions"],
+                        "simulations": int(simulations),
+                        "max_depth": int(max_depth),
+                        "use_jev_prior": bool(use_jev_prior),
+                    },
+                },
+            },
+        )
+        mcts_response = _mcp_read_response(proc, 3, deadline)
+        mcts_result = _extract_mcp_tool_result(mcts_response)
+        if not mcts_result:
+            return route_result, "route"
+
+        return mcts_result, "route_mcts"
     finally:
         if proc.poll() is None:
             proc.terminate()
@@ -521,11 +663,12 @@ def main() -> int:
     )
 
     try:
-        result = _mcp_route(
+        result, routing_mode = _mcp_route_hybrid(
             binary=binary,
             cwd=cwd,
             goal=goal,
             observation=observation,
+            current=current,
             candidates=candidates,
             timeout=timeout,
         )
@@ -554,6 +697,7 @@ def main() -> int:
         current=current,
         confidence=confidence,
         tool_count=len(candidates),
+        routing_mode=routing_mode,
     )
     return 0
 

@@ -736,6 +736,19 @@ export HARNESS_ROUTER_CODEX_TOOLS_JSON='{
 }'
 ~~~
 
+### Optional MCTS escalation
+
+`PreToolUse` uses fast `route` first. It can escalate to `route_mcts` only when the fast route falls back or is below the configured confidence threshold, there are at least 3 candidates, and a side-effect-free graph provider is configured.
+
+~~~bash
+export HARNESS_ROUTER_PRETOOL_MCTS_GRAPH_CMD="./scripts/build_mcts_graph.py"
+export HARNESS_ROUTER_PRETOOL_MCTS_THRESHOLD="0.80"
+~~~
+
+The graph command receives JSON on stdin with the goal, observation, current tool, candidate tools, and fast-route result. It must return `root_state`, `states`, and `transitions` compatible with the MCP `route_mcts` tool. Optional fields are `simulations`, `max_depth`, and `use_jev_prior`.
+
+If no graph command is configured, the hook stays on the fast `route` path and never fabricates an MCTS tree from tool names alone.
+
 The hook is intentionally fail-open. If discovery, `harness-router-mcp`, the MCP `route` call, or the provider fails, Codex keeps its original tool choice. Harness Router never bypasses Codex sandboxing, approval prompts, or execution permissions.
 
 

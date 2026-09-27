@@ -1812,10 +1812,11 @@ curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/mai
             <h3>Fail open. Keep approvals.</h3>
           </div>
           <p>
-            Each <code>PreToolUse</code> call sends the pending tool plus the discovered candidate
-            set to <code>harness-router-mcp</code> through MCP <code>tools/call</code> on
-            <code>route</code>. Same choice, fallback, timeout, or router error lets the original
-            call continue. A different confident choice blocks only that call and asks Codex to
+            Each <code>PreToolUse</code> call uses fast <code>route</code> first. When that
+            decision is uncertain and a side-effect-free graph provider is configured, the hook
+            can escalate to <code>route_mcts</code>. Without a graph provider it never invents an
+            MCTS tree. Same choice, fallback, timeout, or router error lets the original call
+            continue. A different confident choice blocks only that call and asks Codex to
             re-plan once. Sandbox and approval rules remain untouched.
           </p>
         </div>
