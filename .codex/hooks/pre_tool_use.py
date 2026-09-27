@@ -243,9 +243,11 @@ def main() -> int:
     session_id = str(payload.get("session_id") or "default")
     tools, session_path = _load_tools(root, session_id)
 
+    # The catalog is immutable for the session. Discovery happens once at
+    # SessionStart; PreToolUse must not learn tools or invent descriptions.
     if not any(tool.get("name") == current for tool in tools):
-        tools.append(_infer_current_tool(current))
-        _persist_session(session_path, session_id, tools)
+        _allow()
+        return 0
 
     if len(tools) < 2:
         _allow()
