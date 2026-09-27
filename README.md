@@ -586,87 +586,156 @@ Then keep the instruction small: use `route` only at genuine ambiguity points; s
 
 ## Codex PreToolUse hook
 
-The repository now includes a project-local Codex `PreToolUse` integration:
+The repository ships a project-local Codex hook that lets Harness Router review a pending tool choice before Codex executes it.
 
 ~~~text
-.codex/
-├── hooks.json
-├── harness-router-tools.json
-└── hooks/
-    └── pre_tool_use.py
+SessionStart (startup only)
+        |
+        v
+discover_tools.py
+        |
+        +--> codex app-server --stdio
+        |      \--> mcpServerStatus/list
+        |
+        v
+.codex/harness-router-tools.json
+        |
+        v
+PreToolUse
+        |
+        +--> pending tool + full discovered catalog
+        |
+        v
+har route
+        |
+        +--> same tool / fallback / error -> allow
+        \--> different confident tool -> deny once + ask Codex to re-plan
 ~~~
 
-The hook runs immediately before a Codex tool executes. It sends a compact goal,
-the pending tool call, and the candidate tool manifest to `har route`.
+### What gets discovered
 
-Behavior is deliberately conservative:
+Codex `SessionStart` does not include the full runtime tool registry. To build the catalog up front, `.codex/hooks/discover_tools.py` starts a short-lived Codex App Server process and reads the MCP inventory through `mcpServerStatus/list`.
 
-1. Codex selects a tool normally.
-2. `PreToolUse` receives the pending `tool_name` and `tool_input`.
-3. The bridge loads all candidates from `.codex/harness-router-tools.json` and
-   automatically adds the currently observed runtime tool if it is missing.
-4. `harness-router` evaluates the closed choice with Jev.
-5. If Jev selects the same tool, falls back, times out, or the router is unavailable,
-   the hook allows the original Codex call.
-6. If Jev confidently selects a different tool, the hook denies only the pending call
-   and injects a short recommendation so Codex can re-plan once.
+For MCP tools, the generated catalog contains the real metadata exposed by the server:
 
-Codex's current `PreToolUse` input contains the current tool but does **not** expose the
-entire runtime tool registry. The manifest is therefore the explicit bridge for the full
-candidate list. Update it whenever you add MCP servers or custom tools:
+- tool name
+- description
+- input schema
+- output schema
+- annotations
+- source MCP server
 
-~~~json
-{
-  "tools": [
-    {
-      "name": "Bash",
-      "description": "Run a shell command in the Codex workspace.",
-      "category": "execute",
-      "risk": "medium"
-    },
-    {
-      "name": "mcp__filesystem__read_file",
-      "description": "Read a file through the filesystem MCP server.",
-      "category": "inspect",
-      "risk": "low"
-    }
-  ]
-}
+The catalog is generated once at session startup. `PreToolUse` does not learn tools from first use and does not invent descriptions.
+
+Generated state is ignored by Git:
+
+~~~text
+.codex/harness-router-tools.json
+.codex/harness-router/sessions/
 ~~~
 
-The hook never turns Jev confidence into authorization. It does not change Codex sandbox
-settings, approval policy, or permissions.
+### Install the hook in another repository
 
-### Enable it
-
-Install `harness-router` so `har` is on `PATH` and export the OpenRouter key:
+First install Harness Router so `har` is available:
 
 ~~~bash
 uv tool install --force --with 'mcp>=2,<3' \
   'git+https://github.com/Protocol-Lattice/harness-router.git@main'
+~~~
 
+Set the OpenRouter key:
+
+~~~bash
 export OPENROUTER_API_KEY="your-key"
 ~~~
 
-Then run Codex from this repository. Codex discovers project hooks from
-`<repo>/.codex/hooks.json`. Review and trust the hook when Codex asks; project hooks do
-not run until the project/hook definition is trusted.
-
-Optional overrides:
+Then copy the hook files into the target repository:
 
 ~~~bash
-# Use another manifest.
-export HARNESS_ROUTER_CODEX_TOOLS_FILE="$HOME/.codex/my-tools.json"
+mkdir -p .codex/hooks
 
-# Use another CLI binary.
-export HARNESS_ROUTER_BIN="$HOME/.local/bin/har"
+curl -fsSL \
+  https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks.json \
+  -o .codex/hooks.json
 
-# Bound the hook-side routing call.
-export HARNESS_ROUTER_PRETOOL_TIMEOUT="4"
+curl -fsSL \
+  https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks/discover_tools.py \
+  -o .codex/hooks/discover_tools.py
+
+curl -fsSL \
+  https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks/pre_tool_use.py \
+  -o .codex/hooks/pre_tool_use.py
+
+chmod +x .codex/hooks/discover_tools.py .codex/hooks/pre_tool_use.py
 ~~~
 
-The bridge is fail-open by design: configuration errors or provider failures leave Codex's
-original tool call untouched.
+Add generated files to the target repository's `.gitignore`:
+
+~~~gitignore
+.codex/harness-router-tools.json
+.codex/harness-router/sessions/
+~~~
+
+Start a **new Codex session** from that repository. The `SessionStart` hook runs only for `startup`, discovers the available MCP tools immediately, and writes:
+
+~~~text
+.codex/harness-router-tools.json
+.codex/harness-router/sessions/<session_id>.json
+~~~
+
+Codex may ask you to trust project hooks before running them.
+
+### Verify the generated catalog
+
+After the new session starts:
+
+~~~bash
+test -f .codex/harness-router-tools.json && echo "catalog generated"
+
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+data = json.loads(Path(".codex/harness-router-tools.json").read_text())
+print("tools:", data.get("tool_count", len(data.get("tools", []))))
+for tool in data.get("tools", [])[:10]:
+    print(tool["name"], "-", tool.get("description", ""))
+PY
+~~~
+
+If the catalog contains only the built-in fallback entries, confirm that Codex can see your MCP servers:
+
+~~~bash
+codex mcp list
+~~~
+
+### Optional environment variables
+
+~~~bash
+# Use a different harness-router executable.
+export HARNESS_ROUTER_BIN="$HOME/.local/bin/har"
+
+# Bound the PreToolUse routing call.
+export HARNESS_ROUTER_PRETOOL_TIMEOUT="4"
+
+# Bound startup discovery through codex app-server.
+export HARNESS_ROUTER_DISCOVERY_TIMEOUT="8"
+
+# Add extra non-MCP/custom tools to the generated catalog.
+export HARNESS_ROUTER_CODEX_TOOLS_JSON='{
+  "tools": [
+    {
+      "name": "my_custom_tool",
+      "description": "Custom tool available to this harness.",
+      "category": "general",
+      "risk": "medium"
+    }
+  ]
+}'
+~~~
+
+The hook is intentionally fail-open. If discovery, `har route`, or the provider fails, Codex keeps its original tool choice. Harness Router never bypasses Codex sandboxing, approval prompts, or execution permissions.
+
 
 ## Codex skill
 
