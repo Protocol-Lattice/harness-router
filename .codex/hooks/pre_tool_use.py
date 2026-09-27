@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """Codex PreToolUse bridge for harness-router.
 
-Loads the generated tool catalog produced by discover_tools.py, merges the
-currently observed tool, and sends the complete candidate set to harness-router.
-Failures are deliberately fail-open.
+Loads the generated tool catalog produced by discover_tools.py, locally
+shortlists tools similar to the pending call, and sends only that compact
+candidate set to harness-router. Failures are deliberately fail-open.
 """
 
 from __future__ import annotations
 
+from difflib import SequenceMatcher
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -21,6 +23,7 @@ MAX_GOAL_CHARS = 1600
 MAX_OBSERVATION_CHARS = 900
 MAX_TRANSCRIPT_BYTES = 256_000
 DEFAULT_TIMEOUT_SECONDS = 4.0
+DEFAULT_MAX_CANDIDATES = 8
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -43,9 +46,9 @@ def _deny(*, selected: str, current: str, confidence: float | None, tool_count: 
                     f"the pending Codex tool {current!r}"
                 ),
                 "additionalContext": (
-                    f"Harness Router evaluated {tool_count} tools from the generated "
-                    f"session catalog and recommends {selected!r} instead of {current!r}. "
-                    "Re-plan once and preserve the original user goal."
+                    f"Harness Router evaluated {tool_count} similar tools shortlisted "
+                    f"from the generated session catalog and recommends {selected!r} "
+                    f"instead of {current!r}. Re-plan once and preserve the original user goal."
                 ),
             }
         }
@@ -209,6 +212,92 @@ def _compact_tool_input(value: Any) -> str:
     return text[:600]
 
 
+def _tokens(value: str) -> set[str]:
+    value = re.sub(r"([a-z0-9])([A-Z])", r"\\1 \\2", value)
+    return {
+        token.lower()
+        for token in re.split(r"[^a-zA-Z0-9]+", value)
+        if len(token) >= 2
+    }
+
+
+def _tool_similarity(
+    candidate: dict[str, Any],
+    current_tool: dict[str, Any],
+    goal: str,
+) -> float:
+    candidate_name = str(candidate.get("name", ""))
+    current_name = str(current_tool.get("name", ""))
+
+    candidate_name_tokens = _tokens(candidate_name)
+    current_name_tokens = _tokens(current_name)
+    candidate_desc_tokens = _tokens(str(candidate.get("description", "")))
+    current_desc_tokens = _tokens(str(current_tool.get("description", "")))
+    goal_tokens = _tokens(goal)
+
+    score = SequenceMatcher(
+        None,
+        current_name.lower(),
+        candidate_name.lower(),
+    ).ratio() * 10.0
+    score += len(candidate_name_tokens & current_name_tokens) * 4.0
+    score += len(candidate_desc_tokens & current_desc_tokens) * 1.5
+    score += len(
+        goal_tokens & (candidate_name_tokens | candidate_desc_tokens)
+    ) * 0.75
+
+    if (
+        candidate.get("category")
+        and candidate.get("category") == current_tool.get("category")
+    ):
+        score += 2.0
+
+    return score
+
+
+def _similar_tools(
+    tools: list[dict[str, Any]],
+    current: str,
+    goal: str,
+) -> list[dict[str, Any]]:
+    current_tool = next(
+        (tool for tool in tools if tool.get("name") == current),
+        None,
+    )
+    if current_tool is None:
+        return []
+
+    try:
+        max_candidates = max(
+            2,
+            int(
+                os.environ.get(
+                    "HARNESS_ROUTER_PRETOOL_MAX_CANDIDATES",
+                    DEFAULT_MAX_CANDIDATES,
+                )
+            ),
+        )
+    except ValueError:
+        max_candidates = DEFAULT_MAX_CANDIDATES
+
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for tool in tools:
+        name = str(tool.get("name", ""))
+        lowered = name.lower()
+        if "harness-router" in lowered and (
+            "route" in lowered or "mcts" in lowered
+        ):
+            continue
+        if name == current:
+            continue
+        scored.append((_tool_similarity(tool, current_tool, goal), tool))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [current_tool] + [
+        tool for _, tool in scored[: max_candidates - 1]
+    ]
+
+
 def _router_binary() -> str | None:
     return (
         os.environ.get("HARNESS_ROUTER_BIN")
@@ -257,6 +346,11 @@ def main() -> int:
         _goal_from_transcript(payload.get("transcript_path"))
         or "Choose the best next Codex tool for the current task."
     )
+    candidates = _similar_tools(tools, current=current, goal=goal)
+    if len(candidates) < 2:
+        _allow()
+        return 0
+
     observation = (
         f"Codex is about to call {current!r}. "
         f"tool_input={_compact_tool_input(payload.get('tool_input'))}"
@@ -284,7 +378,7 @@ def main() -> int:
                 "--observation",
                 observation,
                 "--tools-json",
-                json.dumps(tools, ensure_ascii=False, separators=(",", ":")),
+                json.dumps(candidates, ensure_ascii=False, separators=(",", ":")),
             ],
             check=False,
             capture_output=True,
@@ -326,7 +420,7 @@ def main() -> int:
         selected=selected,
         current=current,
         confidence=confidence,
-        tool_count=len(tools),
+        tool_count=len(candidates),
     )
     return 0
 
