@@ -1705,10 +1705,64 @@ tool_timeout_sec = 5
         </div>
       </section>
 
+      <section class="install-section" id="codex-hook">
+        <div class="install-head">
+          <div>
+            <div class="section-id">$ 06 · Codex PreToolUse</div>
+            <h2>Route before the tool runs.</h2>
+          </div>
+          <p>
+            A repo-local Codex hook sends the pending tool call plus your explicit tool manifest
+            through <code>har route</code>. Same choice or fallback means Codex continues normally;
+            a different confident choice makes Codex re-plan once.
+          </p>
+        </div>
+
+        <div class="install-grid">
+          <article class="install-step">
+            <div class="num">01 · HOOK</div>
+            <h3>Already in the repo</h3>
+            <p>Codex discovers the project hook from <code>.codex/hooks.json</code>.</p>
+            <code class="mini-code">.codex/hooks.json
+.codex/hooks/pre_tool_use.py</code>
+          </article>
+
+          <article class="install-step">
+            <div class="num">02 · TOOLS</div>
+            <h3>Pass the full candidate list</h3>
+            <p>
+              Codex PreToolUse exposes the pending tool, not the complete runtime registry.
+              Keep native, MCP, and custom candidates in the manifest.
+            </p>
+            <code class="mini-code">.codex/harness-router-tools.json
+
+{
+  "tools": [
+    {"name":"Bash","category":"execute","risk":"medium"},
+    {"name":"apply_patch","category":"mutate","risk":"medium"}
+  ]
+}</code>
+          </article>
+
+          <article class="install-step">
+            <div class="num">03 · POLICY</div>
+            <h3>Fail open, never bypass approvals</h3>
+            <p>
+              Router failure keeps Codex's original tool. A different routed choice blocks only
+              that pending call and returns a short recommendation to Codex.
+            </p>
+            <code class="mini-code">export OPENROUTER_API_KEY="..."
+
+# optional
+export HARNESS_ROUTER_PRETOOL_TIMEOUT="4"</code>
+          </article>
+        </div>
+      </section>
+
       <section class="install-section" id="install">
         <div class="install-head">
           <div>
-            <div class="section-id">$ 06 · Install</div>
+            <div class="section-id">$ 07 · Install</div>
             <h2>Three steps. Then get out of the way.</h2>
           </div>
           <p>
@@ -1749,7 +1803,7 @@ codex mcp list</code>
       </section>
 
       <section class="cta">
-        <div class="section-id">$ 07 · The rule</div>
+        <div class="section-id">$ 08 · The rule</div>
         <h2>Route less.<br><em>Choose better.</em></h2>
         <p>
           Use the model where reasoning matters. Use Jev where the choice is closed.
