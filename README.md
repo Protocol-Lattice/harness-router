@@ -584,6 +584,90 @@ command = "harness-router-mcp"
 
 Then keep the instruction small: use `route` only at genuine ambiguity points; skip it for obvious linear steps. Use `route_mcts` only when downstream consequences matter and the host can provide a side-effect-free simulated graph. Never use real writes, shell commands, browser mutations, or network mutations as MCTS transitions. The fast route uses equal `0.72` direct/fallback thresholds, a 2 second provider timeout, compact state fields, and flat routing through 48 candidates.
 
+## Codex PreToolUse hook
+
+The repository now includes a project-local Codex `PreToolUse` integration:
+
+~~~text
+.codex/
+├── hooks.json
+├── harness-router-tools.json
+└── hooks/
+    └── pre_tool_use.py
+~~~
+
+The hook runs immediately before a Codex tool executes. It sends a compact goal,
+the pending tool call, and the candidate tool manifest to `har route`.
+
+Behavior is deliberately conservative:
+
+1. Codex selects a tool normally.
+2. `PreToolUse` receives the pending `tool_name` and `tool_input`.
+3. The bridge loads all candidates from `.codex/harness-router-tools.json` and
+   automatically adds the currently observed runtime tool if it is missing.
+4. `harness-router` evaluates the closed choice with Jev.
+5. If Jev selects the same tool, falls back, times out, or the router is unavailable,
+   the hook allows the original Codex call.
+6. If Jev confidently selects a different tool, the hook denies only the pending call
+   and injects a short recommendation so Codex can re-plan once.
+
+Codex's current `PreToolUse` input contains the current tool but does **not** expose the
+entire runtime tool registry. The manifest is therefore the explicit bridge for the full
+candidate list. Update it whenever you add MCP servers or custom tools:
+
+~~~json
+{
+  "tools": [
+    {
+      "name": "Bash",
+      "description": "Run a shell command in the Codex workspace.",
+      "category": "execute",
+      "risk": "medium"
+    },
+    {
+      "name": "mcp__filesystem__read_file",
+      "description": "Read a file through the filesystem MCP server.",
+      "category": "inspect",
+      "risk": "low"
+    }
+  ]
+}
+~~~
+
+The hook never turns Jev confidence into authorization. It does not change Codex sandbox
+settings, approval policy, or permissions.
+
+### Enable it
+
+Install `harness-router` so `har` is on `PATH` and export the OpenRouter key:
+
+~~~bash
+uv tool install --force --with 'mcp>=2,<3' \
+  'git+https://github.com/Protocol-Lattice/harness-router.git@main'
+
+export OPENROUTER_API_KEY="your-key"
+~~~
+
+Then run Codex from this repository. Codex discovers project hooks from
+`<repo>/.codex/hooks.json`. Review and trust the hook when Codex asks; project hooks do
+not run until the project/hook definition is trusted.
+
+Optional overrides:
+
+~~~bash
+# Use another manifest.
+export HARNESS_ROUTER_CODEX_TOOLS_FILE="$HOME/.codex/my-tools.json"
+
+# Use another CLI binary.
+export HARNESS_ROUTER_BIN="$HOME/.local/bin/har"
+
+# Bound the hook-side routing call.
+export HARNESS_ROUTER_PRETOOL_TIMEOUT="4"
+~~~
+
+The bridge is fail-open by design: configuration errors or provider failures leave Codex's
+original tool call untouched.
+
 ## Codex skill
 
 This repository includes a ready-to-use skill at:
