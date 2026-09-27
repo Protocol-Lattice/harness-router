@@ -37,6 +37,10 @@ htmlcov/
 .env.*
 !.env.example
 
+# Generated Codex / harness-router state
+.codex/harness-router-tools.json
+.codex/harness-router/sessions/
+
 # IDE / editor
 .idea/
 .vscode/

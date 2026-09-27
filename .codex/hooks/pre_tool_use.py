@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Codex PreToolUse bridge for harness-router.
 
-Loads the full per-session tool catalog created by SessionStart, merges the
+Loads the generated tool catalog produced by discover_tools.py, merges the
 currently observed tool, and sends the complete candidate set to harness-router.
 Failures are deliberately fail-open.
 """
@@ -43,7 +43,7 @@ def _deny(*, selected: str, current: str, confidence: float | None, tool_count: 
                     f"the pending Codex tool {current!r}"
                 ),
                 "additionalContext": (
-                    f"Harness Router evaluated {tool_count} tools from the current "
+                    f"Harness Router evaluated {tool_count} tools from the generated "
                     f"session catalog and recommends {selected!r} instead of {current!r}. "
                     "Re-plan once and preserve the original user goal."
                 ),
@@ -97,8 +97,9 @@ def _normalize(raw: Any) -> list[dict[str, Any]]:
 
 def _load_tools(root: Path, session_id: str) -> tuple[list[dict[str, Any]], Path]:
     session = root / ".codex" / "harness-router" / "sessions" / f"{session_id}.json"
-    fallback = root / ".codex" / "harness-router-tools.json"
-    for path in (session, fallback):
+    generated = root / ".codex" / "harness-router-tools.json"
+
+    for path in (session, generated):
         try:
             tools = _normalize(json.loads(path.read_text(encoding="utf-8")))
             if tools:
@@ -118,6 +119,7 @@ def _infer_current_tool(tool_name: str) -> dict[str, Any]:
         category, risk = "inspect", "low"
     else:
         category, risk = "general", "medium"
+
     return {
         "name": tool_name,
         "description": f"Codex runtime tool observed by PreToolUse: {tool_name}",
@@ -131,7 +133,11 @@ def _persist_session(path: Path, session_id: str, tools: list[dict[str, Any]]) -
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps({"session_id": session_id, "tools": tools}, indent=2, ensure_ascii=False),
+            json.dumps(
+                {"generated": True, "session_id": session_id, "tools": tools},
+                indent=2,
+                ensure_ascii=False,
+            ),
             encoding="utf-8",
         )
     except OSError:
@@ -173,13 +179,14 @@ def _find_user_text(value: Any) -> str:
 def _goal_from_transcript(path_value: Any) -> str:
     if not isinstance(path_value, str) or not path_value:
         return ""
+
     try:
         path = Path(path_value)
-        with path.open("rb") as h:
-            h.seek(0, 2)
-            size = h.tell()
-            h.seek(max(0, size - MAX_TRANSCRIPT_BYTES))
-            chunk = h.read().decode("utf-8", errors="ignore")
+        with path.open("rb") as handle:
+            handle.seek(0, 2)
+            size = handle.tell()
+            handle.seek(max(0, size - MAX_TRANSCRIPT_BYTES))
+            chunk = handle.read().decode("utf-8", errors="ignore")
     except OSError:
         return ""
 
@@ -203,7 +210,11 @@ def _compact_tool_input(value: Any) -> str:
 
 
 def _router_binary() -> str | None:
-    return os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("har") or shutil.which("harness-router")
+    return (
+        os.environ.get("HARNESS_ROUTER_BIN")
+        or shutil.which("har")
+        or shutil.which("harness-router")
+    )
 
 
 def main() -> int:
@@ -232,7 +243,7 @@ def main() -> int:
     session_id = str(payload.get("session_id") or "default")
     tools, session_path = _load_tools(root, session_id)
 
-    if not any(t.get("name") == current for t in tools):
+    if not any(tool.get("name") == current for tool in tools):
         tools.append(_infer_current_tool(current))
         _persist_session(session_path, session_id, tools)
 
@@ -240,7 +251,10 @@ def main() -> int:
         _allow()
         return 0
 
-    goal = _goal_from_transcript(payload.get("transcript_path")) or "Choose the best next Codex tool for the current task."
+    goal = (
+        _goal_from_transcript(payload.get("transcript_path"))
+        or "Choose the best next Codex tool for the current task."
+    )
     observation = (
         f"Codex is about to call {current!r}. "
         f"tool_input={_compact_tool_input(payload.get('tool_input'))}"
@@ -251,7 +265,13 @@ def main() -> int:
         _allow()
         return 0
 
-    timeout = float(os.environ.get("HARNESS_ROUTER_PRETOOL_TIMEOUT", DEFAULT_TIMEOUT_SECONDS))
+    timeout = float(
+        os.environ.get(
+            "HARNESS_ROUTER_PRETOOL_TIMEOUT",
+            DEFAULT_TIMEOUT_SECONDS,
+        )
+    )
+
     try:
         p = subprocess.run(
             [
@@ -285,13 +305,27 @@ def main() -> int:
         return 0
 
     selected = result.get("tool")
-    if result.get("fallback") or not isinstance(selected, str) or not selected or selected == current:
+    if (
+        result.get("fallback")
+        or not isinstance(selected, str)
+        or not selected
+        or selected == current
+    ):
         _allow()
         return 0
 
     confidence_value = result.get("confidence")
-    confidence = float(confidence_value) if isinstance(confidence_value, (int, float)) else None
-    _deny(selected=selected, current=current, confidence=confidence, tool_count=len(tools))
+    confidence = (
+        float(confidence_value)
+        if isinstance(confidence_value, (int, float))
+        else None
+    )
+    _deny(
+        selected=selected,
+        current=current,
+        confidence=confidence,
+        tool_count=len(tools),
+    )
     return 0
 
 
