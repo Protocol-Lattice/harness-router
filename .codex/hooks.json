@@ -1,0 +1,17 @@
+{
+  "description": "Route ambiguous Codex tool calls through harness-router before execution.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/pre_tool_use.py\"",
+            "timeout": 5,
+            "statusMessage": "Routing tool choice with harness-router"
+          }
+        ]
+      }
+    ]
+  }
+}
