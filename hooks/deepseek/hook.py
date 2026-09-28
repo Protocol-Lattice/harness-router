@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -232,7 +233,72 @@ def route(binary: str, cwd: Path, current: str, candidates: list[dict[str, Any]]
                 },
             },
         })
-        return extract_result(read(2))
+        result = extract_result(read(2))
+
+        # Escalate ambiguous multi-step decisions to route_mcts when an
+        # explicitly configured, side-effect-free graph provider is available.
+        import time
+        graph_command = os.environ.get("HARNESS_ROUTER_PRETOOL_MCTS_GRAPH_CMD", "").strip()
+        threshold = float(os.environ.get("HARNESS_ROUTER_PRETOOL_MCTS_THRESHOLD", "0.80"))
+        confidence = result.get("confidence")
+        confident = (
+            isinstance(confidence, (float, int))
+            and not isinstance(confidence, bool)
+            and confidence >= threshold
+            and not result.get("fallback")
+        )
+        remaining = deadline - time.monotonic()
+        if not graph_command or confident or len(candidates) < 3 or remaining <= 0:
+            return result
+
+        graph_proc = subprocess.run(
+            shlex.split(graph_command),
+            cwd=cwd,
+            input=json.dumps({
+                "goal": "Choose the best next tool for the current DeepSeek Harness task.",
+                "observation": f"DeepSeek Harness is about to call {current!r}.",
+                "current_tool": current,
+                "candidates": candidates,
+                "route_result": result,
+            }),
+            capture_output=True,
+            text=True,
+            timeout=remaining,
+            check=False,
+        )
+        if graph_proc.returncode:
+            return result
+        try:
+            graph = json.loads(graph_proc.stdout)
+        except json.JSONDecodeError:
+            return result
+        if (
+            not isinstance(graph, dict)
+            or not isinstance(graph.get("root_state"), str)
+            or not isinstance(graph.get("states"), list)
+            or not isinstance(graph.get("transitions"), list)
+            or deadline <= time.monotonic()
+        ):
+            return result
+
+        send({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "route_mcts",
+                "arguments": {
+                    "root_state": graph["root_state"],
+                    "states": graph["states"],
+                    "transitions": graph["transitions"],
+                    "simulations": graph.get("simulations", 64),
+                    "max_depth": graph.get("max_depth", 3),
+                    "use_jev_prior": graph.get("use_jev_prior", True),
+                },
+            },
+        })
+        mcts = extract_result(read(3))
+        return mcts or result
     finally:
         if proc.poll() is None:
             proc.terminate()
