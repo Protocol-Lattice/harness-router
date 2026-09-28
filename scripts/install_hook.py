@@ -26,6 +26,7 @@ PROVIDERS = {
     "claude": ("Claude Code", ".claude/settings.json"),
     "ohmypi": ("ohmypi", None),
     "antigravity": ("Antigravity", ".agents/hooks.json"),
+    "deepseek": ("DeepSeek Harness", ".dsh/harness-router-hooks.json"),
 }
 OHMYPI_ASSETS = (
     ".omp/extensions/harness-router.ts",
@@ -38,6 +39,32 @@ ANTIGRAVITY_ASSETS = (
     ".antigravity/hooks/pre_tool_use.py",
     ".antigravity/hooks/discover_tools.py",
 )
+DEEPSEEK_HOOK_CONFIG = {
+    "description": "Route DeepSeek Harness tool calls through Harness Router.",
+    "hooks": {
+        "PreToolUse": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 .dsh/hooks/hook.py",
+                        "timeout": 5,
+                    }
+                ]
+            }
+        ]
+    },
+}
+DEEPSEEK_PATCH = """# Harness Router integration for DeepSeek Harness.
+# DeepSeek maps the Codex PreToolUse bridge onto tools/pre-execute.
+# Start dsh with: dsh --patch .dsh/harness-router.patch.yml
+
+- id: harness-router-hooks-codex
+  name: '@deepseek-ai/dsh-hooks-codex'
+  config:
+    configPath: ./.dsh/harness-router-hooks.json
+    model: !!js process.env.DSH_MODEL ?? ''
+"""
 
 
 def asset(path: str, source: Path | None, ref: str) -> bytes:
@@ -218,6 +245,38 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
     planned: dict[Path, bytes] = {}
     ignore_entries = ["*.harness-router.bak"]
     for provider in providers:
+        if provider == "deepseek":
+            hook_source = asset("hooks/deepseek/hook.py", source, ref)
+            ast.parse(hook_source, filename="hooks/deepseek/hook.py", feature_version=(3, 11))
+            hook_target = root / ".dsh/hooks/hook.py"
+            config_target = root / ".dsh/harness-router-hooks.json"
+            patch_target = root / ".dsh/harness-router.patch.yml"
+            check_target(root, hook_target)
+            check_target(root, config_target)
+            check_target(root, patch_target)
+            planned[hook_target] = hook_source
+            existing = (
+                object_from_json(config_target.read_bytes(), str(config_target))
+                if config_target.exists()
+                else {}
+            )
+            merged = merge_config(
+                existing,
+                DEEPSEEK_HOOK_CONFIG,
+                "deepseek",
+            )
+            planned[config_target] = (
+                config_target.read_bytes()
+                if config_target.exists() and existing == merged
+                else (json.dumps(merged, indent=2, ensure_ascii=False) + "\n").encode()
+            )
+            planned[patch_target] = DEEPSEEK_PATCH.encode()
+            ignore_entries.extend([
+                ".dsh/harness-router-tools.json",
+                ".dsh/harness-router.patch.yml.harness-router.bak",
+                ".dsh/harness-router-hooks.json.harness-router.bak",
+            ])
+            continue
         if provider == "ohmypi":
             # Native extension discovery needs no settings or shell-hook registration.
             for relative in OHMYPI_ASSETS:
@@ -350,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
         "--provider",
         required=True,
         choices=[*PROVIDERS, "both", "all"],
-        help="both = Codex + Claude Code; all = Codex + Claude Code + ohmypi + Antigravity",
+        help="both = Codex + Claude Code; all = every supported harness",
     )
     parser.add_argument("--project", type=Path, default=Path.cwd(), help="target project root")
     parser.add_argument(
