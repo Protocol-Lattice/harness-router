@@ -466,6 +466,10 @@ def install_ohmypi_dependencies(project: Path, bun: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--action", choices=["install", "uninstall"], default="install",
+        help="install or uninstall the selected provider",
+    )
+    parser.add_argument(
         "--provider",
         required=True,
         choices=[*PROVIDERS, "both", "all"],
@@ -499,10 +503,17 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
     try:
-        changed = install(args.project, providers, args.source, args.ref)
+        changed = (
+            install(args.project, providers, args.source, args.ref)
+            if args.action == "install"
+            else uninstall(args.project, providers)
+        )
     except (OSError, ValueError, SyntaxError, subprocess.SubprocessError) as exc:
         print(f"Hook installation failed: {exc}", file=sys.stderr)
         return 1
+    if args.action == "uninstall":
+        print(f"Removed {len(changed)} DeepSeek Harness files/integration entries.")
+        return 0
     if bun is not None:
         try:
             install_ohmypi_dependencies(args.project, bun)
