@@ -407,44 +407,42 @@
     .jev-intro { min-width: 0; }
 
     .jev-compare {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 22px;
-      margin: 28px 0 26px;
+      margin: 24px 0 24px;
+      max-width: 430px;
     }
 
     .jev-stat {
       min-width: 0;
-      padding-right: 18px;
-      border-right: 1px solid var(--line);
-    }
-
-    .jev-stat:last-child {
-      padding-right: 0;
-      border-right: 0;
+      padding: 0;
+      border: 0;
     }
 
     .jev-saving {
       display: block;
-      margin: 0 0 8px;
+      margin: 0 0 10px;
       color: var(--pink);
-      font: 500 clamp(56px, 6.4vw, 88px)/.9 var(--serif);
+      font: 500 clamp(72px, 8vw, 104px)/.9 var(--serif);
       letter-spacing: -.065em;
     }
 
     .jev-saving-label {
       margin: 0;
+      max-width: 390px;
       color: #d8d2da;
-      font: 500 15px/1.5 var(--sans);
+      font: 500 16px/1.45 var(--sans);
     }
 
     .jev-saving-label span {
       display: block;
-      margin-top: 4px;
+      margin-top: 8px;
       color: var(--muted);
-      font: 10px/1.5 var(--mono);
+      font: 10px/1.55 var(--mono);
       text-transform: uppercase;
-      letter-spacing: .08em;
+      letter-spacing: .12em;
+    }
+
+    .jev-intro .story-copy {
+      max-width: 640px;
     }
 
     .jev-links {
@@ -1218,10 +1216,23 @@
       }
 
       .benchmark-intro { grid-column: 1 / -1; }
-      .jev-compare { grid-template-columns: 1fr; gap: 18px; }
-      .jev-stat { padding: 0 0 18px; border-right: 0; border-bottom: 1px solid var(--line); }
-      .jev-stat:last-child { padding-bottom: 0; border-bottom: 0; }
-      .jev-saving { font-size: clamp(58px, 19vw, 86px); }
+      .jev-compare {
+        max-width: none;
+        margin: 22px 0 20px;
+      }
+
+      .jev-stat {
+        padding: 0;
+        border: 0;
+      }
+
+      .jev-saving {
+        font-size: clamp(58px, 19vw, 86px);
+      }
+
+      .jev-saving-label {
+        max-width: none;
+      }
       .jev-benchmark figcaption,
       .jev-cost-row { padding: 22px 20px; }
       .jev-reduction,
