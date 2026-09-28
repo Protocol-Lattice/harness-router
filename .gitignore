@@ -10,6 +10,9 @@ venv/
 env/
 ENV/
 
+# TypeScript hook development
+node_modules/
+
 # Packaging / build
 build/
 dist/
@@ -45,6 +48,11 @@ htmlcov/
 .claude/harness-router-tools.json
 .claude/harness-router/
 .claude/settings.local.json
+
+# Generated ohmypi / harness-router state
+.omp/harness-router-tools.json
+.omp/harness-router/
+*.harness-router.bak
 
 # IDE / editor
 .idea/

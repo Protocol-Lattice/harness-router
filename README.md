@@ -21,6 +21,8 @@
   ·
   <a href="#claude-code-pretooluse-hook">Claude Code hook</a>
   ·
+  <a href="#ohmypi-tool-call-hook">ohmypi hook</a>
+  ·
   <a href="#codex-skill">Codex skill</a>
   ·
   <a href="#native-mcp-server">MCP</a>
@@ -70,7 +72,8 @@ Harness Router decides **which tool should run next**.
 
 ### 1. Hook — route every tool call
 
-Use the Codex or Claude Code `PreToolUse` hook to intercept pending tool calls before execution.
+Use the Codex or Claude Code `PreToolUse` hook, or the ohmypi `tool_call` extension,
+to intercept pending tool calls before execution.
 
 Harness Router compares the tool the agent chose against its session tool catalog.
 
@@ -117,7 +120,7 @@ Harness Router gives you:
 
 - ⚡ **Fast `route` path** for ordinary tool ambiguity
 - 🌳 **Bounded `route_mcts`** for multi-step decisions
-- 🪝 **Codex and Claude Code `PreToolUse` hooks** for interception before execution
+- 🪝 **Codex, Claude Code, and ohmypi hooks** for interception before execution
 - 🧠 **TypeSafeAI Jev** through OpenRouter Decisions
 - 🔌 **Native MCP server**
 - 🧩 **Framework-agnostic Python API**
@@ -325,7 +328,8 @@ curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/mai
 ```
 
 Run from the Git repository root, or supply `--project /path/to/repo`. The same
-installer supports `--provider claude` and `--provider both`. It preserves other
+installer supports `--provider claude`, `--provider ohmypi`, and `--provider all`.
+`--provider both` continues to mean Codex + Claude Code. It preserves other
 hooks and settings, backs up changed files as `*.harness-router.bak`, and avoids
 duplicate registrations on repeat runs. Use `--ref TAG_OR_COMMIT` to select a
 version, or `--source /path/to/harness-router` to copy from a local checkout.
@@ -392,6 +396,40 @@ supplemental descriptors through
 `HARNESS_ROUTER_CLAUDE_TOOLS_FILE` or `HARNESS_ROUTER_CLAUDE_TOOLS_JSON`.
 See the [Claude hook guide](.claude/README.md) for catalog format, configuration,
 and installation details, using the [official hook format](https://code.claude.com/docs/en/hooks).
+
+---
+
+## ohmypi tool-call hook
+
+The [ohmypi integration](.omp/README.md) runs inside the harness as a native extension:
+
+```text
+.omp/extensions/harness-router.ts
+.omp/hooks/pre_tool_use.py
+```
+
+It reads the actual runtime catalog through `pi.getAllTools()`, including names,
+descriptions, schemas, and source metadata, and filters it using
+`pi.getActiveTools()`. Discovery needs no hard-coded built-ins or separate agent
+process. The catalog is read again before each `tool_call`, so newly loaded and
+disabled tools are reflected immediately.
+
+The extension shortlists candidates, calls `route`, and optionally escalates to
+`route_mcts` using the same graph-provider contract as the other hooks. A confident
+alternative returns `{ block: true, reason }` to request one re-plan per user turn.
+Errors, fallbacks, and unknown tools pass through with normal permissions intact.
+
+Install in another project:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider ohmypi
+```
+
+Install `harness-router-mcp`, export `OPENROUTER_API_KEY`, and start `omp` from the
+project root. ohmypi discovers `.omp/extensions` automatically; no settings edits
+are needed. See the [ohmypi hook guide](.omp/README.md) for local installation,
+catalog snapshots, settings, and limitations.
 
 ---
 

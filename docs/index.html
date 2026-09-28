@@ -1861,10 +1861,10 @@ tool_timeout_sec = 5
         <div class="install-head">
           <div>
             <div class="section-id">$ 06 · Project Hooks</div>
-            <h2>Discover once. Route every call.</h2>
+            <h2>Discover tools. Route every call.</h2>
           </div>
           <p>
-            Choose Codex or Claude Code. The project hook prepares a session tool catalog,
+            Choose Codex, Claude Code, or ohmypi. The integration reads the available tools,
             then uses Harness Router to check tool choices before execution.
           </p>
         </div>
@@ -1876,13 +1876,15 @@ tool_timeout_sec = 5
             <div class="num">01 · INSTALL HOOK</div>
             <h3>Add the project hook</h3>
             <p>
-              Run the installer in your project root. It adds the hook scripts, merges the
-              configuration, and keeps generated state out of Git.
+              Run the installer in your project root. It adds the integration files and keeps
+              generated state out of Git. Codex and Claude Code get merged hook settings;
+              ohmypi loads its extension automatically.
             </p>
             <fieldset class="hook-provider">
               <legend>Choose your provider</legend>
               <label><input type="radio" name="hook-provider" value="codex" checked /><span>Codex</span></label>
               <label><input type="radio" name="hook-provider" value="claude" /><span>Claude Code</span></label>
+              <label><input type="radio" name="hook-provider" value="ohmypi" /><span>ohmypi</span></label>
             </fieldset>
             <div class="hook-command-toolbar">
               <span>Project root · Python 3.11+</span>
@@ -1893,6 +1895,8 @@ tool_timeout_sec = 5
             <p class="hook-install-note">
               Keeps existing settings and other hooks. Backs up changed files. Safe to run again.
               <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/scripts/install_hook.py">View installer ↗</a>
+              Use <code>--provider all</code> for all three, or <code>--provider both</code>
+              for Codex and Claude Code.
             </p>
           </article>
 
@@ -1923,6 +1927,23 @@ tool_timeout_sec = 5
 .claude/hooks/discover_tools.py
 .claude/hooks/pre_tool_use.py</code>
               </div>
+              <div data-hook-provider-details="ohmypi" hidden>
+                <h3>Start ohmypi in your project</h3>
+                <p>
+                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  exported, run <code>omp</code> from the project root. It automatically loads
+                  <code>.omp/extensions/harness-router.ts</code>; no hook configuration file
+                  is needed.
+                </p>
+                <code class="mini-code">.omp/extensions/harness-router.ts
+.omp/hooks/pre_tool_use.py</code>
+                <p class="hook-install-note">
+                  The extension reads the real runtime catalog through <code>pi.getAllTools()</code>
+                  and <code>pi.getActiveTools()</code> before each <code>tool_call</code>, including
+                  active MCP and extension tools. No separate discovery process or model call.
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/.omp/README.md">ohmypi hook guide ↗</a>
+                </p>
+              </div>
             </div>
           </article>
         </div>
@@ -1933,7 +1954,7 @@ tool_timeout_sec = 5
             <h3>Fail open. Keep approvals.</h3>
           </div>
           <p>
-            Each <code>PreToolUse</code> call uses fast <code>route</code> first. When that
+            Each pending tool call uses fast <code>route</code> first. When that
             decision is uncertain and a side-effect-free graph provider is configured, the hook
             can escalate to <code>route_mcts</code>. Without a graph provider it never invents an
             MCTS tree. Same choice, fallback, timeout, or router error lets the original call
@@ -2046,9 +2067,9 @@ codex mcp list</code>
     const hookProviders = document.querySelectorAll('input[name="hook-provider"]');
     function updateHookInstaller() {
       const provider = document.querySelector('input[name="hook-provider"]:checked').value;
-      const name = provider === "claude" ? "Claude Code" : "Codex";
+      const name = { codex: "Codex", claude: "Claude Code", ohmypi: "ohmypi" }[provider];
       const code = document.getElementById("hook-install-command");
-      code.textContent = code.textContent.replace(/--provider (codex|claude)/, "--provider " + provider);
+      code.textContent = code.textContent.replace(/--provider (codex|claude|ohmypi)/, "--provider " + provider);
       const button = document.getElementById("hook-install-copy");
       button.dataset.copy = code.textContent;
       button.setAttribute("aria-label", "Copy " + name + " hook installation command");

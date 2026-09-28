@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install project hooks for Codex, Claude Code, or both. Python 3.11+, no dependencies."""
+"""Install project hooks for Codex, Claude Code, and ohmypi. Python 3.11+, no dependencies."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ BACKUP_SUFFIX = ".harness-router.bak"
 PROVIDERS = {
     "codex": ("Codex", ".codex/hooks.json"),
     "claude": ("Claude Code", ".claude/settings.json"),
+    "ohmypi": ("ohmypi", None),
 }
 
 
@@ -94,7 +95,7 @@ def merge_config(
 
 
 def check_target(root: Path, path: Path) -> None:
-    # Project hooks must not follow a .claude/.codex symlink into global settings.
+    # Project hooks must not follow a symlink into global configuration.
     for candidate in (path, *path.parents):
         if candidate == root:
             break
@@ -138,7 +139,19 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
     planned: dict[Path, bytes] = {}
     ignore_entries = ["*.harness-router.bak"]
     for provider in providers:
+        if provider == "ohmypi":
+            # Native extension discovery needs no settings or shell-hook registration.
+            for relative in (".omp/extensions/harness-router.ts", ".omp/hooks/pre_tool_use.py"):
+                data = asset(relative, source, ref)
+                if relative.endswith(".py"):
+                    ast.parse(data, filename=relative, feature_version=(3, 11))
+                else:
+                    data.decode("utf-8")
+                planned[root / relative] = data
+            ignore_entries.extend([".omp/harness-router-tools.json", ".omp/harness-router/"])
+            continue
         _, config_path = PROVIDERS[provider]
+        assert config_path is not None
         template = object_from_json(asset(config_path, source, ref), config_path)
         if not {"SessionStart", "PreToolUse"} <= template.get("hooks", {}).keys():
             raise ValueError(f"Incomplete {provider} hook template")
@@ -196,14 +209,24 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", required=True, choices=[*PROVIDERS, "both"])
+    parser.add_argument(
+        "--provider",
+        required=True,
+        choices=[*PROVIDERS, "both", "all"],
+        help="both = Codex + Claude Code; all = Codex + Claude Code + ohmypi",
+    )
     parser.add_argument("--project", type=Path, default=Path.cwd(), help="target project root")
     parser.add_argument(
         "--ref", default="main", help="GitHub branch, tag, or commit (default: main)"
     )
     parser.add_argument("--source", type=Path, help="copy from a local harness-router checkout")
     args = parser.parse_args(argv)
-    providers = list(PROVIDERS) if args.provider == "both" else [args.provider]
+    if args.provider == "all":
+        providers = list(PROVIDERS)
+    elif args.provider == "both":
+        providers = ["codex", "claude"]
+    else:
+        providers = [args.provider]
     try:
         changed = install(args.project, providers, args.source, args.ref)
     except (OSError, ValueError, SyntaxError, subprocess.SubprocessError) as exc:
