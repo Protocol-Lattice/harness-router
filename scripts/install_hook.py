@@ -291,6 +291,17 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
     root = project.resolve()
     if not root.is_dir():
         raise ValueError(f"Project directory does not exist: {root}")
+    if "deepseek" in providers:
+        hook_source = asset("hooks/deepseek/hook.py", source, ref)
+        check_target(root, root / ".dsh/hooks/hook.py")
+        hook_path = root / ".dsh/hooks/hook.py"
+        config_path = root / ".dsh/harness-router-hooks.json"
+        patch_path = root / ".dsh/harness-router.patch.yml"
+        planned[hook_path] = hook_source
+        existing = object_from_json(config_path.read_bytes(), str(config_path)) if config_path.exists() else {"hooks": {}}
+        planned[config_path] = (json.dumps(merge_config(existing, DEEPSEEK_HOOK_CONFIG, "deepseek"), indent=2) + "\n").encode()
+        planned[patch_path] = DEEPSEEK_PATCH.encode()
+
     if "codex" in providers:
         result = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
