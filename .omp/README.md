@@ -2,12 +2,16 @@
 
 This integration uses ohmypi's native extension runtime. It needs Python 3.11+,
 `harness-router-mcp` on `PATH`, and `OPENROUTER_API_KEY`. The Python bridge uses
-only the standard library; the TypeScript extension needs no npm dependencies.
+only the standard library; running the TypeScript extension needs no additional
+npm dependencies. The included development setup provides editor types.
 
 ```text
 .omp/
   extensions/harness-router.ts   Runtime catalog, lifecycle, tool_call interception
   hooks/pre_tool_use.py          Shortlisting, MCP routing, optional MCTS
+  tsconfig.json                 TypeScript module resolution and Node/Bun globals
+  package.json                  Pinned development dependencies and typecheck command
+  bun.lock                      Reproducible development dependency installation
 ```
 
 ## Install
@@ -35,8 +39,9 @@ python3 /path/to/harness-router/scripts/install_hook.py \
   --provider ohmypi --project /path/to/project --source /path/to/harness-router
 ```
 
-The installer copies both files and updates `.gitignore`, preserving existing
-settings and extensions. Changed files are backed up as `*.harness-router.bak`;
+The installer copies all five files and updates `.gitignore`, preserving ohmypi's
+runtime settings and other extensions. Changed files, including existing
+TypeScript development files, are backed up as `*.harness-router.bak`;
 reinstalling is idempotent. No Git repository is required for ohmypi alone.
 `--provider all` installs Codex, Claude Code, and ohmypi; `--provider both` still
 means Codex + Claude Code and requires a Git repository root.
@@ -130,8 +135,9 @@ execute actual tool actions. Without a graph provider, only `route` is called.
 ## TypeScript development
 
 The `.omp/package.json` and `.omp/tsconfig.json` files provide editor and compiler
-support for the extension. They are development files, separate from ohmypi's
-automatic extension registration. Install the pinned types before editing:
+support for the extension. The installer includes them with `.omp/bun.lock`.
+They are development files, separate from ohmypi's automatic extension
+registration. From the installed project's root, install the pinned types before editing:
 
 ```bash
 cd .omp

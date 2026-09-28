@@ -20,27 +20,54 @@ def test_install_preserves_other_extensions_settings_and_is_idempotent(tmp_path)
     other.write_text("export default function () {}\n")
     ignore = tmp_path / ".gitignore"
     ignore.write_text("existing/\n")
-    assert len(installer.install(tmp_path, ["ohmypi"], ROOT, "main")) == 3
-    for relative in (".omp/extensions/harness-router.ts", ".omp/hooks/pre_tool_use.py"):
+    assert len(installer.install(tmp_path, ["ohmypi"], ROOT, "main")) == 6
+    for relative in (
+        ".omp/extensions/harness-router.ts",
+        ".omp/hooks/pre_tool_use.py",
+        ".omp/tsconfig.json",
+        ".omp/package.json",
+        ".omp/bun.lock",
+    ):
         assert (tmp_path / relative).read_bytes() == (ROOT / relative).read_bytes()
     assert config.read_text() == "# keep formatting\nextensions: [./my-extension.ts]\n"
     assert other.read_text() == "export default function () {}\n"
     assert (tmp_path / ".gitignore.harness-router.bak").read_text() == "existing/\n"
     assert ".omp/harness-router/" in ignore.read_text().splitlines()
+    assert ".omp/node_modules/" in ignore.read_text().splitlines()
     assert installer.install(tmp_path, ["ohmypi"], ROOT, "main") == []
     assert not (tmp_path / ".claude").exists()
     assert not (tmp_path / ".codex").exists()
 
 
-def test_modified_extension_is_backed_up(tmp_path):
+@pytest.mark.parametrize(
+    "relative",
+    [
+        ".omp/extensions/harness-router.ts",
+        ".omp/tsconfig.json",
+        ".omp/package.json",
+        ".omp/bun.lock",
+    ],
+)
+def test_modified_assets_are_backed_up(tmp_path, relative):
     installer.install(tmp_path, ["ohmypi"], ROOT, "main")
-    extension = tmp_path / ".omp/extensions/harness-router.ts"
-    extension.write_text("customized extension\n")
+    target = tmp_path / relative
+    target.write_text("customized asset\n")
     installer.install(tmp_path, ["ohmypi"], ROOT, "main")
-    assert extension.with_suffix(".ts.harness-router.bak").read_text() == "customized extension\n"
+    assert target.with_name(target.name + ".harness-router.bak").read_text() == "customized asset\n"
+    assert target.read_bytes() == (ROOT / relative).read_bytes()
 
 
-@pytest.mark.parametrize("blocked", [".omp", ".omp/extensions", ".omp/hooks"])
+@pytest.mark.parametrize(
+    "blocked",
+    [
+        ".omp",
+        ".omp/extensions",
+        ".omp/hooks",
+        ".omp/tsconfig.json",
+        ".omp/package.json",
+        ".omp/bun.lock",
+    ],
+)
 def test_symlinks_cannot_modify_other_directories(tmp_path, blocked):
     project = tmp_path / "project"
     project.mkdir()
@@ -55,14 +82,26 @@ def test_symlinks_cannot_modify_other_directories(tmp_path, blocked):
     assert not (project / ".gitignore").exists()
 
 
-def test_asset_failure_leaves_no_partial_installation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("missing", [".omp/hooks/pre_tool_use.py", ".omp/bun.lock"])
+def test_asset_failure_leaves_no_partial_installation(tmp_path, monkeypatch, missing):
     def asset(path, source, ref):
-        if path.endswith(".py"):
+        if path == missing:
             raise OSError("download failed")
         return (ROOT / path).read_bytes()
 
     monkeypatch.setattr(installer, "asset", asset)
     with pytest.raises(OSError, match="download failed"):
+        installer.install(tmp_path, ["ohmypi"], None, "test-ref")
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("invalid", [".omp/tsconfig.json", ".omp/package.json"])
+def test_invalid_development_asset_leaves_project_unchanged(tmp_path, monkeypatch, invalid):
+    def asset(path, source, ref):
+        return b"invalid json" if path == invalid else (ROOT / path).read_bytes()
+
+    monkeypatch.setattr(installer, "asset", asset)
+    with pytest.raises(ValueError, match="not valid JSON"):
         installer.install(tmp_path, ["ohmypi"], None, "test-ref")
     assert not list(tmp_path.iterdir())
 
@@ -100,3 +139,8 @@ def test_stdin_cli_provider_selection_remains_compatible(tmp_path, provider, exp
     assert "Installed" in run.stdout
     for directory in (".codex", ".claude", ".omp"):
         assert (project / directory).exists() == (directory in expected)
+    if ".omp" in expected:
+        assert (project / ".omp/tsconfig.json").is_file()
+        assert (project / ".omp/package.json").is_file()
+        assert (project / ".omp/bun.lock").is_file()
+        assert "bun install --frozen-lockfile --ignore-scripts" in run.stdout

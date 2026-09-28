@@ -1936,7 +1936,17 @@ tool_timeout_sec = 5
                   is needed.
                 </p>
                 <code class="mini-code">.omp/extensions/harness-router.ts
-.omp/hooks/pre_tool_use.py</code>
+.omp/hooks/pre_tool_use.py
+.omp/tsconfig.json
+.omp/package.json
+.omp/bun.lock</code>
+                <p class="hook-install-note">
+                  The installer also includes TypeScript configuration and pinned development
+                  dependencies. For editor types and type checking, run:
+                </p>
+                <code class="mini-code">cd .omp
+bun install --frozen-lockfile --ignore-scripts
+bun run typecheck</code>
                 <p class="hook-install-note">
                   The extension reads the real runtime catalog through <code>pi.getAllTools()</code>
                   and <code>pi.getActiveTools()</code> before each <code>tool_call</code>, including

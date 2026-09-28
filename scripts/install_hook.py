@@ -25,6 +25,13 @@ PROVIDERS = {
     "claude": ("Claude Code", ".claude/settings.json"),
     "ohmypi": ("ohmypi", None),
 }
+OHMYPI_ASSETS = (
+    ".omp/extensions/harness-router.ts",
+    ".omp/hooks/pre_tool_use.py",
+    ".omp/tsconfig.json",
+    ".omp/package.json",
+    ".omp/bun.lock",
+)
 
 
 def asset(path: str, source: Path | None, ref: str) -> bytes:
@@ -141,14 +148,18 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
     for provider in providers:
         if provider == "ohmypi":
             # Native extension discovery needs no settings or shell-hook registration.
-            for relative in (".omp/extensions/harness-router.ts", ".omp/hooks/pre_tool_use.py"):
+            for relative in OHMYPI_ASSETS:
                 data = asset(relative, source, ref)
                 if relative.endswith(".py"):
                     ast.parse(data, filename=relative, feature_version=(3, 11))
+                elif relative.endswith(".json"):
+                    object_from_json(data, relative)
                 else:
                     data.decode("utf-8")
                 planned[root / relative] = data
-            ignore_entries.extend([".omp/harness-router-tools.json", ".omp/harness-router/"])
+            ignore_entries.extend(
+                [".omp/harness-router-tools.json", ".omp/harness-router/", ".omp/node_modules/"]
+            )
             continue
         _, config_path = PROVIDERS[provider]
         assert config_path is not None
@@ -239,6 +250,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"{names} hooks are already up to date in {args.project.resolve()}")
     print("Routing requires harness-router-mcp on PATH and OPENROUTER_API_KEY.")
+    if "ohmypi" in providers:
+        print("For TypeScript editor support, install the included development dependencies:")
+        print(f"  cd {shlex.quote(str(args.project.resolve() / '.omp'))}")
+        print("  bun install --frozen-lockfile --ignore-scripts")
+        print("  bun run typecheck")
     print(f"Start a new {names} session to load the hooks.")
     return 0
 
