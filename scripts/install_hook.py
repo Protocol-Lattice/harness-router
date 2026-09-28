@@ -26,6 +26,7 @@ PROVIDERS = {
     "claude": ("Claude Code", ".claude/settings.json"),
     "ohmypi": ("ohmypi", None),
     "antigravity": ("Antigravity", ".agents/hooks.json"),
+    "deepseek": ("DeepSeek Harness", ".dsh/harness-router-hooks.json"),
 }
 OHMYPI_ASSETS = (
     ".omp/extensions/harness-router.ts",
@@ -38,6 +39,32 @@ ANTIGRAVITY_ASSETS = (
     ".antigravity/hooks/pre_tool_use.py",
     ".antigravity/hooks/discover_tools.py",
 )
+DEEPSEEK_HOOK_CONFIG = {
+    "description": "Route DeepSeek Harness tool calls through Harness Router.",
+    "hooks": {
+        "PreToolUse": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 .dsh/hooks/hook.py",
+                        "timeout": 5,
+                    }
+                ]
+            }
+        ]
+    },
+}
+DEEPSEEK_PATCH = """# Harness Router integration for DeepSeek Harness.
+# DeepSeek maps the Codex PreToolUse bridge onto tools/pre-execute.
+# Start dsh with: dsh --patch .dsh/harness-router.patch.yml
+
+- id: harness-router-hooks-codex
+  name: '@deepseek-ai/dsh-hooks-codex'
+  config:
+    configPath: ./.dsh/harness-router-hooks.json
+    model: !!js process.env.DSH_MODEL ?? ''
+"""
 
 
 def asset(path: str, source: Path | None, ref: str) -> bytes:
@@ -75,7 +102,10 @@ def owned_handler(handler: dict[str, Any], provider: str) -> bool:
     arguments = handler.get("args", [])
     if isinstance(arguments, list):
         words.extend(argument for argument in arguments if isinstance(argument, str))
-    scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_tool_use")]
+    if provider == "deepseek":
+        scripts = [".dsh/hooks/hook.py"]
+    else:
+        scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_tool_use")]
     return any(
         word == script or word.endswith("/" + script) for word in words for script in scripts
     )
@@ -200,6 +230,63 @@ def atomic_write(path: Path, data: bytes, mode: int) -> None:
             os.unlink(temporary)
 
 
+
+def uninstall_deepseek(project: Path) -> list[Path]:
+    root = project.resolve()
+    config = root / ".dsh/harness-router-hooks.json"
+    hook = root / ".dsh/hooks/hook.py"
+    patch = root / ".dsh/harness-router.patch.yml"
+    removed: list[Path] = []
+
+    if config.exists():
+        check_target(root, config)
+        existing = object_from_json(config.read_bytes(), str(config))
+        hooks = existing.get("hooks", {})
+        if not isinstance(hooks, dict):
+            raise ValueError(f"{config} must contain a hooks object")
+        cleaned = copy.deepcopy(existing)
+        cleaned_hooks = cleaned["hooks"]
+        for event, groups in list(cleaned_hooks.items()):
+            if not isinstance(groups, list):
+                continue
+            kept_groups = []
+            for group in groups:
+                if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                    kept_groups.append(group)
+                    continue
+                remaining = [h for h in group["hooks"] if not owned_handler(h, "deepseek")]
+                if remaining:
+                    kept_groups.append({**group, "hooks": remaining})
+            if kept_groups:
+                cleaned_hooks[event] = kept_groups
+            else:
+                cleaned_hooks.pop(event, None)
+
+        if cleaned != existing:
+            if cleaned.get("hooks"):
+                atomic_write(
+                    config,
+                    (json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n").encode(),
+                    stat.S_IMODE(config.stat().st_mode),
+                )
+            else:
+                config.unlink()
+                removed.append(config)
+
+    for path in (hook, patch):
+        if path.exists():
+            check_target(root, path)
+            path.unlink()
+            removed.append(path)
+    return removed
+
+
+def uninstall(project: Path, providers: list[str]) -> list[Path]:
+    if providers != ["deepseek"]:
+        raise ValueError("uninstall currently supports only the deepseek provider")
+    return uninstall_deepseek(project)
+
+
 def install(project: Path, providers: list[str], source: Path | None, ref: str) -> list[Path]:
     root = project.resolve()
     if not root.is_dir():
@@ -218,6 +305,38 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
     planned: dict[Path, bytes] = {}
     ignore_entries = ["*.harness-router.bak"]
     for provider in providers:
+        if provider == "deepseek":
+            hook_source = asset("hooks/deepseek/hook.py", source, ref)
+            ast.parse(hook_source, filename="hooks/deepseek/hook.py", feature_version=(3, 11))
+            hook_target = root / ".dsh/hooks/hook.py"
+            config_target = root / ".dsh/harness-router-hooks.json"
+            patch_target = root / ".dsh/harness-router.patch.yml"
+            check_target(root, hook_target)
+            check_target(root, config_target)
+            check_target(root, patch_target)
+            planned[hook_target] = hook_source
+            existing = (
+                object_from_json(config_target.read_bytes(), str(config_target))
+                if config_target.exists()
+                else {}
+            )
+            merged = merge_config(
+                existing,
+                DEEPSEEK_HOOK_CONFIG,
+                "deepseek",
+            )
+            planned[config_target] = (
+                config_target.read_bytes()
+                if config_target.exists() and existing == merged
+                else (json.dumps(merged, indent=2, ensure_ascii=False) + "\n").encode()
+            )
+            planned[patch_target] = DEEPSEEK_PATCH.encode()
+            ignore_entries.extend([
+                ".dsh/harness-router-tools.json",
+                ".dsh/harness-router.patch.yml.harness-router.bak",
+                ".dsh/harness-router-hooks.json.harness-router.bak",
+            ])
+            continue
         if provider == "ohmypi":
             # Native extension discovery needs no settings or shell-hook registration.
             for relative in OHMYPI_ASSETS:
@@ -347,10 +466,14 @@ def install_ohmypi_dependencies(project: Path, bun: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--action", choices=["install", "uninstall"], default="install",
+        help="install or uninstall the selected provider",
+    )
+    parser.add_argument(
         "--provider",
         required=True,
         choices=[*PROVIDERS, "both", "all"],
-        help="both = Codex + Claude Code; all = Codex + Claude Code + ohmypi + Antigravity",
+        help="both = Codex + Claude Code; all = every supported harness",
     )
     parser.add_argument("--project", type=Path, default=Path.cwd(), help="target project root")
     parser.add_argument(
@@ -380,10 +503,17 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
     try:
-        changed = install(args.project, providers, args.source, args.ref)
+        changed = (
+            install(args.project, providers, args.source, args.ref)
+            if args.action == "install"
+            else uninstall(args.project, providers)
+        )
     except (OSError, ValueError, SyntaxError, subprocess.SubprocessError) as exc:
         print(f"Hook installation failed: {exc}", file=sys.stderr)
         return 1
+    if args.action == "uninstall":
+        print(f"Removed {len(changed)} DeepSeek Harness files/integration entries.")
+        return 0
     if bun is not None:
         try:
             install_ohmypi_dependencies(args.project, bun)
