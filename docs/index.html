@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>harness-router — the fast decision layer for agent harnesses</title>
-  <meta name="description" content="A tiny decision layer for agent harnesses. Use normal tool calling when the next step is obvious, Jev through native MCP when it is ambiguous, and bounded MCTS when downstream consequences matter." />
+  <meta name="description" content="A decision layer for agent harnesses. Route tool calls automatically through Codex PreToolUse, use Jev for fast selection, and bounded MCTS when downstream consequences matter." />
   <meta name="theme-color" content="#0a0910" />
   <link rel="canonical" href="https://protocol-lattice.github.io/harness-router/" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://protocol-lattice.github.io/harness-router/" />
-  <meta property="og:title" content="harness-router — stop reasoning about obvious tool calls" />
+  <meta property="og:title" content="harness-router — route tool calls before they run" />
   <meta property="og:description" content="Fast path first. Jev only for real ambiguity. Bounded MCTS when the next few moves matter." />
   <meta name="twitter:card" content="summary_large_image" />
 
@@ -1370,14 +1370,14 @@
         <div>
           <div class="section-id">$ 01 · Decision layer</div>
           <h1>
-            Stop reasoning<br>
-            about <em>obvious</em><br>
-            tool calls.
+            Route tool calls<br>
+            <em>before</em> they<br>
+            run.
           </h1>
           <p class="hero-copy">
-            <strong>harness-router</strong> keeps the easy path cheap.
-            Obvious action? Call the tool. Real ambiguity? Ask Jev.
-            Multi-step consequences? Search a bounded tree.
+            <strong>harness-router</strong> can intercept every Codex tool call with <code>PreToolUse</code>.
+            Fast route first. Real ambiguity can escalate to Jev-backed MCTS.
+            Confident alternatives make Codex re-plan before the tool executes.
           </p>
 
           <div class="install">
@@ -1416,7 +1416,7 @@
         </div>
         <div class="stat">
           <strong>0</strong>
-          <span>router calls on obvious steps</span>
+          <span>extra model reasoning required before hook routing</span>
         </div>
         <div class="stat">
           <strong>MIT</strong>
@@ -1438,11 +1438,11 @@
         <div class="decision-stack">
           <div class="decision-card active">
             <b><span>known file</span><span>→ read</span></b>
-            <p>No routing call. The next action is already obvious.</p>
+            <p>The hook validates the call against the discovered tool inventory before execution.</p>
           </div>
           <div class="decision-card active">
             <b><span>edit finished</span><span>→ test</span></b>
-            <p>No routing call. Deterministic transitions stay local.</p>
+            <p>Fast routing keeps deterministic transitions cheap while still checking the selected tool.</p>
           </div>
           <div class="decision-card">
             <b><span>4 plausible tools</span><span>→ route</span></b>
@@ -1869,8 +1869,8 @@ codex mcp list</code>
         <div class="section-id">$ 08 · The rule</div>
         <h2>Route less.<br><em>Choose better.</em></h2>
         <p>
-          Use the model where reasoning matters. Use Jev where the choice is closed.
-          Use MCTS where the next few moves matter. Skip all of it when the next step is obvious.
+          Let the hook route each tool call before execution. Use fast <code>route</code> for ordinary choices,
+          and escalate to <code>route_mcts</code> when ambiguity and downstream consequences justify deeper search.
         </p>
         <div class="cta-actions">
           <a class="btn primary" href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">View on GitHub</a>
