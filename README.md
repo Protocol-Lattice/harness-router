@@ -74,7 +74,7 @@ Harness Router decides **which tool should run next**.
 
 ### 1. Hook — route every tool call
 
-Use the Codex, Claude Code, or Antigravity `PreToolUse` hook, or the ohmypi `tool_call` extension,
+Use the Codex, Claude Code, Antigravity, or DeepSeek Harness `PreToolUse` hook, or the ohmypi `tool_call` extension,
 to intercept pending tool calls before execution.
 
 Harness Router compares the tool the agent chose against its session tool catalog.
@@ -122,7 +122,7 @@ Harness Router gives you:
 
 - ⚡ **Fast `route` path** for ordinary tool ambiguity
 - 🌳 **Bounded `route_mcts`** for multi-step decisions
-- 🪝 **Codex, Claude Code, ohmypi, and Antigravity hooks** for interception before execution
+- 🪝 **Codex, Claude Code, ohmypi, Antigravity, and DeepSeek Harness hooks** for interception before execution
 - 🧠 **TypeSafeAI Jev** through OpenRouter Decisions
 - 🔌 **Native MCP server**
 - 🧩 **Framework-agnostic Python API**
@@ -461,6 +461,33 @@ inventory adapter uses internal runtime APIs; see the guide for compatibility,
 connection settings and explicit catalog overrides.
 
 ---
+
+## DeepSeek Harness hook
+
+DeepSeek Harness exposes a native `tools/pre-execute` interception point. Its
+supported `@deepseek-ai/dsh-hooks-codex` bridge can run synchronous Codex
+command hooks at that point, so Harness Router reuses the same interception
+semantics instead of inventing a private DeepSeek hook protocol.
+
+Install it in a project with:
+
+```bash
+python3 hooks/deepseek/install.py
+```
+
+Then launch DeepSeek Harness with:
+
+```bash
+dsh --patch .dsh/harness-router.patch.yml
+```
+
+The command hook reads a supplied DeepSeek tool catalog from
+`HARNESS_ROUTER_DEEPSEEK_TOOLS_JSON`, `HARNESS_ROUTER_DEEPSEEK_TOOLS_FILE`,
+or `.dsh/harness-router-tools.json`. If the catalog or router is unavailable,
+the hook fails open.
+
+See [the DeepSeek hook guide](hooks/deepseek/README.md) for configuration and
+limitations.
 
 ## Codex skill
 
