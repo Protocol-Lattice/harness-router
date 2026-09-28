@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install project hooks for Codex, Claude Code, and ohmypi. Python 3.11+, no dependencies."""
+"""Install project hooks. Requires Python 3.11+ and Bun for ohmypi's TypeScript setup."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import copy
 import json
 import os
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -218,6 +219,31 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
     return [path for path, _, _ in changes]
 
 
+def install_ohmypi_dependencies(project: Path, bun: str) -> None:
+    directory = project.resolve() / ".omp"
+    env = os.environ.copy()
+    # The API declarations, Node/Bun types, and compiler are devDependencies.
+    env["NODE_ENV"] = "development"
+    print(f"Installing ohmypi TypeScript dependencies in {directory}", flush=True)
+    subprocess.run(
+        [bun, "install", "--frozen-lockfile", "--ignore-scripts"],
+        cwd=directory,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        timeout=300,
+        check=True,
+    )
+    print("Checking ohmypi extension types", flush=True)
+    subprocess.run(
+        [bun, "run", "typecheck"],
+        cwd=directory,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        timeout=60,
+        check=True,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -231,6 +257,11 @@ def main(argv: list[str] | None = None) -> int:
         "--ref", default="main", help="GitHub branch, tag, or commit (default: main)"
     )
     parser.add_argument("--source", type=Path, help="copy from a local harness-router checkout")
+    parser.add_argument(
+        "--skip-ohmypi-deps",
+        action="store_true",
+        help="copy ohmypi files without installing or checking TypeScript dependencies",
+    )
     args = parser.parse_args(argv)
     if args.provider == "all":
         providers = list(PROVIDERS)
@@ -238,11 +269,32 @@ def main(argv: list[str] | None = None) -> int:
         providers = ["codex", "claude"]
     else:
         providers = [args.provider]
+    bun = None
+    if "ohmypi" in providers and not args.skip_ohmypi_deps:
+        bun = shutil.which("bun")
+        if bun is None:
+            print(
+                "Hook installation failed: Bun is required for ohmypi's TypeScript dependencies. "
+                "Install Bun, or use --skip-ohmypi-deps to copy only the files.",
+                file=sys.stderr,
+            )
+            return 1
     try:
         changed = install(args.project, providers, args.source, args.ref)
     except (OSError, ValueError, SyntaxError, subprocess.SubprocessError) as exc:
         print(f"Hook installation failed: {exc}", file=sys.stderr)
         return 1
+    if bun is not None:
+        try:
+            install_ohmypi_dependencies(args.project, bun)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            print(f"ohmypi dependency setup failed: {exc}", file=sys.stderr)
+            print(
+                f"Hook files are installed in {args.project.resolve()}. "
+                "Resolve the error and rerun the installer to finish setup.",
+                file=sys.stderr,
+            )
+            return 1
     names = " and ".join(PROVIDERS[provider][0] for provider in providers)
     if changed:
         print(f"Installed {names} hooks in {args.project.resolve()}")
@@ -250,8 +302,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"{names} hooks are already up to date in {args.project.resolve()}")
     print("Routing requires harness-router-mcp on PATH and OPENROUTER_API_KEY.")
-    if "ohmypi" in providers:
-        print("For TypeScript editor support, install the included development dependencies:")
+    if bun is not None:
+        print("ohmypi TypeScript dependencies are installed and typecheck passed.")
+    elif "ohmypi" in providers:
+        print("TypeScript dependency setup was skipped. To enable editor types:")
         print(f"  cd {shlex.quote(str(args.project.resolve() / '.omp'))}")
         print("  bun install --frozen-lockfile --ignore-scripts")
         print("  bun run typecheck")

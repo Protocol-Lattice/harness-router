@@ -3,7 +3,8 @@
 This integration uses ohmypi's native extension runtime. It needs Python 3.11+,
 `harness-router-mcp` on `PATH`, and `OPENROUTER_API_KEY`. The Python bridge uses
 only the standard library; running the TypeScript extension needs no additional
-npm dependencies. The included development setup provides editor types.
+npm dependencies. The installer requires Bun on `PATH` to install editor types
+and check the extension automatically.
 
 ```text
 .omp/
@@ -45,6 +46,17 @@ TypeScript development files, are backed up as `*.harness-router.bak`;
 reinstalling is idempotent. No Git repository is required for ohmypi alone.
 `--provider all` installs Codex, Claude Code, and ohmypi; `--provider both` still
 means Codex + Claude Code and requires a Git repository root.
+
+For ohmypi, the installer then runs `bun install --frozen-lockfile --ignore-scripts`
+and `bun run typecheck` inside the target `.omp` directory. This installs the
+ohmypi API declarations, Node/Bun types, and TypeScript compiler, including when
+`NODE_ENV=production`. Setup reports success only after the type check passes.
+Rerunning the installer repairs missing dependencies even when the hook files
+are already up to date. If dependency installation fails, the copied files stay
+in place and the installer returns an error so setup can be retried.
+
+Use `--skip-ohmypi-deps` for an explicit files-only/offline installation. Editor
+types will remain unavailable until you run the development setup commands below.
 
 ohmypi auto-discovers `<cwd>/.omp/extensions`, without walking parent directories.
 Start in the project root. With discovery disabled, explicitly load the extension:
@@ -137,7 +149,9 @@ execute actual tool actions. Without a graph provider, only `route` is called.
 The `.omp/package.json` and `.omp/tsconfig.json` files provide editor and compiler
 support for the extension. The installer includes them with `.omp/bun.lock`.
 They are development files, separate from ohmypi's automatic extension
-registration. From the installed project's root, install the pinned types before editing:
+registration. The installer installs and checks them automatically. To repeat
+the checks, or finish an installation made with `--skip-ohmypi-deps`, run from
+the installed project's root:
 
 ```bash
 cd .omp

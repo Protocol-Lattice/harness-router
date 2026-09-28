@@ -1887,7 +1887,7 @@ tool_timeout_sec = 5
               <label><input type="radio" name="hook-provider" value="ohmypi" /><span>ohmypi</span></label>
             </fieldset>
             <div class="hook-command-toolbar">
-              <span>Project root · Python 3.11+</span>
+              <span id="hook-install-requirements">Project root · Python 3.11+</span>
               <button class="copy" id="hook-install-copy" type="button" data-copy="" aria-label="Copy Codex hook installation command">copy</button>
             </div>
             <code class="mini-code" id="hook-install-command">curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
@@ -1941,11 +1941,11 @@ tool_timeout_sec = 5
 .omp/package.json
 .omp/bun.lock</code>
                 <p class="hook-install-note">
-                  The installer also includes TypeScript configuration and pinned development
-                  dependencies. For editor types and type checking, run:
+                  The installer uses Bun to install the pinned TypeScript dependencies and
+                  check the extension automatically. Bun must be on your <code>PATH</code>.
+                  To repeat the type check later, run:
                 </p>
                 <code class="mini-code">cd .omp
-bun install --frozen-lockfile --ignore-scripts
 bun run typecheck</code>
                 <p class="hook-install-note">
                   The extension reads the real runtime catalog through <code>pi.getAllTools()</code>
@@ -2078,6 +2078,8 @@ codex mcp list</code>
     function updateHookInstaller() {
       const provider = document.querySelector('input[name="hook-provider"]:checked').value;
       const name = { codex: "Codex", claude: "Claude Code", ohmypi: "ohmypi" }[provider];
+      document.getElementById("hook-install-requirements").textContent =
+        "Project root · Python 3.11+" + (provider === "ohmypi" ? " · Bun" : "");
       const code = document.getElementById("hook-install-command");
       code.textContent = code.textContent.replace(/--provider (codex|claude|ohmypi)/, "--provider " + provider);
       const button = document.getElementById("hook-install-copy");

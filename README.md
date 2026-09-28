@@ -428,7 +428,9 @@ curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/mai
 
 Install `harness-router-mcp`, export `OPENROUTER_API_KEY`, and start `omp` from the
 project root. ohmypi discovers `.omp/extensions` automatically; no settings edits
-are needed. See the [ohmypi hook guide](.omp/README.md) for local installation,
+are needed. The installer requires Bun to install the pinned TypeScript dependencies
+and run the extension's type check in `.omp`. Use `--skip-ohmypi-deps` for a
+files-only installation. See the [ohmypi hook guide](.omp/README.md) for local installation,
 catalog snapshots, settings, and limitations.
 
 ---
