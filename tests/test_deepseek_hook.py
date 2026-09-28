@@ -127,3 +127,12 @@ def test_deepseek_hook_denies_confident_alternative(monkeypatch, tmp_path, capsy
     output = json.loads(capsys.readouterr().out)
     assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert "search_code" in output["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_deepseek_hook_supports_mcts_escalation():
+    source = (ROOT / "hooks/deepseek/hook.py").read_text(encoding="utf-8")
+    assert 'HARNESS_ROUTER_PRETOOL_MCTS_GRAPH_CMD' in source
+    assert 'HARNESS_ROUTER_PRETOOL_MCTS_THRESHOLD' in source
+    assert '"name": "route_mcts"' in source
+    assert '"root_state": graph["root_state"]' in source
+    assert '"transitions": graph["transitions"]' in source
