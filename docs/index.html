@@ -536,9 +536,9 @@
       background: #797180;
     }
 
-    /* Linear cost scale: $0.0004 / $0.1174, using the published rounded values. */
+    /* Linear input-token price scale: $0.042 / $10 per 1M tokens. */
     .jev-cost-row.highlight .jev-cost-fill {
-      width: calc(100% * .0004 / .1174);
+      width: calc(100% * .042 / 10);
       background: var(--pink);
     }
 
@@ -1528,25 +1528,26 @@
         </div>
         <figure class="jev-benchmark" aria-labelledby="jev-chart-title" aria-describedby="jev-chart-unit jev-source">
           <figcaption>
-            <h3 id="jev-chart-title">Same reported accuracy. Lower cost.</h3>
-            <p class="jev-chart-unit" id="jev-chart-unit">Mean cost per case · USD · linear scale · lower is better</p>
+            <h3 id="jev-chart-title">TypeSafe AI vs GPT-6 Astra</h3>
+            <p class="jev-chart-unit" id="jev-chart-unit">Input price per 1M tokens · USD · linear scale · lower is better</p>
           </figcaption>
           <div class="jev-cost-row highlight">
-            <div class="jev-model"><strong>TypeSafe AI · Jev</strong><span>67.8% accuracy</span></div>
-            <p class="jev-cost">$0.0004</p>
+            <div class="jev-model"><strong>TypeSafe AI · Jev</strong><span>output free</span></div>
+            <p class="jev-cost">$0.042</p>
             <div class="jev-cost-track" aria-hidden="true"><span class="jev-cost-fill"></span></div>
           </div>
           <div class="jev-cost-row">
-            <div class="jev-model"><strong>Anthropic · Sonnet 5</strong><span>67.8% accuracy</span></div>
-            <p class="jev-cost">$0.1174</p>
+            <div class="jev-model"><strong>OpenAI · GPT-6 Astra</strong><span>$50 / MTok output</span></div>
+            <p class="jev-cost">$10.00</p>
             <div class="jev-cost-track" aria-hidden="true"><span class="jev-cost-fill"></span></div>
           </div>
-          <p class="jev-reduction">Jev costs about <strong>99.66% less</strong> per case.</p>
+          <p class="jev-reduction">Jev input is about <strong>238× cheaper</strong> than GPT-6 Astra.</p>
           <p class="jev-source" id="jev-source">
-            Source: <a href="https://evals.typesafe.ai/" target="_blank" rel="noreferrer">TypeSafe AI workflow evals</a>,
-            checked 27 Sep 2026. Rounded results, averaged equally across four workflows using
-            model-consensus reference labels and default reasoning settings. Vendor-reported
-            workflow results; harness-router’s end-to-end savings depend on your workload.
+            Sources:
+            <a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev" target="_blank" rel="noreferrer">TypeSafe AI pricing</a>
+            and
+            <a href="https://developers.openai.com/api/docs/models/gpt-6-astra" target="_blank" rel="noreferrer">OpenAI GPT-6 Astra pricing</a>.
+            Standard published token rates; actual end-to-end request cost depends on input, output, caching, and workload.
           </p>
         </figure>
       </section>
