@@ -342,7 +342,7 @@ def main() -> int:
         return 0
 
     try:
-        result = route(binary, cwd, current, candidates)
+        result = route(binary=binary, cwd=cwd, current=current, candidates=candidates)
     except (OSError, ValueError, RuntimeError, TimeoutError, subprocess.SubprocessError):
         allow()
         return 0
