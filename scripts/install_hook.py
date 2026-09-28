@@ -269,6 +269,7 @@ def uninstall_deepseek(project: Path) -> list[Path]:
                     (json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n").encode(),
                     stat.S_IMODE(config.stat().st_mode),
                 )
+                removed.append(config)
             else:
                 config.unlink()
                 removed.append(config)
