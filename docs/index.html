@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>harness-router — the fast decision layer for agent harnesses</title>
-  <meta name="description" content="Live tool discovery and routing hooks for Codex, Claude Code, ohmypi, and Antigravity. Use route for fast selection and route_mcts for bounded search." />
+  <meta name="description" content="Live tool discovery and routing hooks for Codex, Claude Code, ohmypi, Antigravity, and DeepSeek Harness. Use route for fast selection and route_mcts for bounded search." />
   <meta name="theme-color" content="#0a0910" />
   <link rel="canonical" href="https://protocol-lattice.github.io/harness-router/" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://protocol-lattice.github.io/harness-router/" />
   <meta property="og:title" content="harness-router — route tool calls before they run" />
-  <meta property="og:description" content="Route live tools before they run in Codex, Claude Code, ohmypi, and Antigravity. Use route for fast decisions or route_mcts with a side-effect-free state graph." />
+  <meta property="og:description" content="Route live tools before they run in Codex, Claude Code, ohmypi, Antigravity, and DeepSeek Harness. Use route for fast decisions or route_mcts with a side-effect-free state graph." />
   <meta name="twitter:card" content="summary_large_image" />
 
   <style>
@@ -1868,7 +1868,7 @@ tool_timeout_sec = 5
             <h2>Discover tools. Route every call.</h2>
           </div>
           <p>
-            Choose Codex, Claude Code, ohmypi, or Antigravity. The integration reads the available tools,
+            Choose Codex, Claude Code, ohmypi, Antigravity, or DeepSeek Harness. The integration reads the available tools,
             then uses Harness Router to check tool choices before execution.
           </p>
         </div>
@@ -1891,6 +1891,7 @@ tool_timeout_sec = 5
               <label><input type="radio" name="hook-provider" value="claude" /><span>Claude Code</span></label>
               <label><input type="radio" name="hook-provider" value="ohmypi" /><span>ohmypi</span></label>
               <label><input type="radio" name="hook-provider" value="antigravity" /><span>Antigravity</span></label>
+              <label><input type="radio" name="hook-provider" value="deepseek" /><span>DeepSeek Harness</span></label>
             </fieldset>
             <div class="hook-command-toolbar">
               <span id="hook-install-requirements">Project root · Python 3.11+</span>
@@ -1901,7 +1902,7 @@ tool_timeout_sec = 5
             <p class="hook-install-note">
               Keeps existing settings and other hooks. Backs up changed files. Safe to run again.
               <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/scripts/install_hook.py">View installer ↗</a>
-              Use <code>--provider all</code> for all four, or <code>--provider both</code>
+              Use <code>--provider all</code> for all five, or <code>--provider both</code>
               for Codex and Claude Code.
             </p>
           </article>
@@ -1963,6 +1964,23 @@ bun run typecheck</code>
                   and <code>pi.getActiveTools()</code> before each <code>tool_call</code>, including
                   active MCP and extension tools. No separate discovery process or model call.
                   <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/.omp/README.md">ohmypi hook guide ↗</a>
+                </p>
+              </div>
+              <div data-hook-provider-details="deepseek" hidden>
+                <h3>Start DeepSeek Harness</h3>
+                <p>
+                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  exported, install the DeepSeek Harness hook. It uses DeepSeek's supported
+                  <code>tools/pre-execute</code> interception point through the
+                  <code>@deepseek-ai/dsh-hooks-codex</code> bridge.
+                </p>
+                <code class="mini-code">.dsh/harness-router-hooks.json
+.dsh/harness-router.patch.yml
+.dsh/hooks/hook.py</code>
+                <p class="hook-install-note">
+                  Start DeepSeek Harness with <code>dsh --patch .dsh/harness-router.patch.yml</code>.
+                  The hook fails open if routing or its explicit tool catalog is unavailable.
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/hooks/deepseek/README.md">DeepSeek hook guide ↗</a>
                 </p>
               </div>
               <div data-hook-provider-details="antigravity" hidden>
@@ -2114,11 +2132,11 @@ codex mcp list</code>
     const hookProviders = document.querySelectorAll('input[name="hook-provider"]');
     function updateHookInstaller() {
       const provider = document.querySelector('input[name="hook-provider"]:checked').value;
-      const name = { codex: "Codex", claude: "Claude Code", ohmypi: "ohmypi", antigravity: "Antigravity" }[provider];
+      const name = { codex: "Codex", claude: "Claude Code", ohmypi: "ohmypi", antigravity: "Antigravity", deepseek: "DeepSeek Harness" }[provider];
       document.getElementById("hook-install-requirements").textContent =
         "Project root · Python 3.11+" + (provider === "ohmypi" ? " · Bun" : "");
       const code = document.getElementById("hook-install-command");
-      code.textContent = code.textContent.replace(/--provider (codex|claude|ohmypi|antigravity)/, "--provider " + provider);
+      code.textContent = code.textContent.replace(/--provider (codex|claude|ohmypi|antigravity|deepseek)/, "--provider " + provider);
       const button = document.getElementById("hook-install-copy");
       button.dataset.copy = code.textContent;
       button.setAttribute("aria-label", "Copy " + name + " hook installation command");
