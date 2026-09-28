@@ -406,17 +406,45 @@
 
     .jev-intro { min-width: 0; }
 
+    .jev-compare {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 22px;
+      margin: 28px 0 26px;
+    }
+
+    .jev-stat {
+      min-width: 0;
+      padding-right: 18px;
+      border-right: 1px solid var(--line);
+    }
+
+    .jev-stat:last-child {
+      padding-right: 0;
+      border-right: 0;
+    }
+
     .jev-saving {
       display: block;
-      margin: 28px 0 8px;
+      margin: 0 0 8px;
       color: var(--pink);
-      font: 500 clamp(70px, 8vw, 108px)/.9 var(--serif);
+      font: 500 clamp(56px, 6.4vw, 88px)/.9 var(--serif);
       letter-spacing: -.065em;
     }
 
     .jev-saving-label {
-      margin: 0 0 24px;
-      font: 500 18px/1.5 var(--sans);
+      margin: 0;
+      color: #d8d2da;
+      font: 500 15px/1.5 var(--sans);
+    }
+
+    .jev-saving-label span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font: 10px/1.5 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .08em;
     }
 
     .jev-links {
@@ -1190,7 +1218,10 @@
       }
 
       .benchmark-intro { grid-column: 1 / -1; }
-      .jev-saving { font-size: clamp(72px, 23vw, 100px); }
+      .jev-compare { grid-template-columns: 1fr; gap: 18px; }
+      .jev-stat { padding: 0 0 18px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .jev-stat:last-child { padding-bottom: 0; border-bottom: 0; }
+      .jev-saving { font-size: clamp(58px, 19vw, 86px); }
       .jev-benchmark figcaption,
       .jev-cost-row { padding: 22px 20px; }
       .jev-reduction,
@@ -1457,17 +1488,37 @@
         <div class="jev-intro">
           <div class="benchmark-badge">TypeSafe AI · Workflow benchmark</div>
           <h2 id="why-jev-title">Why <em>Jev?</em></h2>
-          <strong class="jev-saving">≈294×</strong>
-          <p class="jev-saving-label">cheaper than Sonnet 5 on these workflows.</p>
+          <div class="jev-compare" aria-label="Jev comparison highlights">
+            <div class="jev-stat">
+              <strong class="jev-saving">10.2×</strong>
+              <p class="jev-saving-label">
+                faster tool choice than Codex
+                <span>Harness Router route · observed median latency</span>
+              </p>
+            </div>
+            <div class="jev-stat">
+              <strong class="jev-saving">≈294×</strong>
+              <p class="jev-saving-label">
+                cheaper than Sonnet 5
+                <span>TypeSafe AI workflow benchmark · mean cost per case</span>
+              </p>
+            </div>
+          </div>
           <p class="story-copy">
-            Jev and Sonnet 5 both reach <strong>67.8% mean accuracy</strong> in TypeSafe AI’s
-            published workflow evals. Jev’s reported cost is <strong>$0.0004 per case</strong>,
-            compared with $0.1174 for Sonnet 5 — a <strong>293.5× cost ratio</strong>
-            using the published rounded prices.
+            In harness-router’s 24 paired <code>route</code> decisions, the Jev-powered router
+            chose the same tool as Codex in <strong>24/24 cases</strong> while median decision
+            latency was <strong>332 ms vs 3,384 ms</strong> for Codex — <strong>10.2× faster</strong>
+            in that run.
           </p>
           <p class="story-copy">
-            That is why harness-router uses Jev for closed tool choices:
-            structured decisions with confidence, while your planner handles the reasoning.
+            On TypeSafe AI’s published workflow evals, Jev and Sonnet 5 both report
+            <strong>67.8% mean accuracy</strong>. Jev’s reported cost is
+            <strong>$0.0004 per case</strong> versus $0.1174 for Sonnet 5 —
+            a <strong>293.5× cost ratio</strong> using the published rounded prices.
+          </p>
+          <p class="story-copy">
+            The point is not to replace Codex’s planner. Jev handles the narrow,
+            closed-choice routing step; Codex keeps the broader reasoning and execution loop.
           </p>
           <div class="jev-links">
             <a href="https://evals.typesafe.ai/" target="_blank" rel="noreferrer">Explore TypeSafe’s benchmark ↗</a>
