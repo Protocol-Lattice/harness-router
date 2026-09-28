@@ -291,7 +291,7 @@ def route(binary: str, cwd: Path, current: str, candidates: list[dict[str, Any]]
                     "root_state": graph["root_state"],
                     "states": graph["states"],
                     "transitions": graph["transitions"],
-                    "simulations": graph.get("simulations", 64),
+                    "simulations": graph.get("simulations", 4096),
                     "max_depth": graph.get("max_depth", 3),
                     "use_jev_prior": graph.get("use_jev_prior", True),
                 },
