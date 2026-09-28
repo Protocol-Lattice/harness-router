@@ -11,7 +11,7 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://protocol-lattice.github.io/harness-router/" />
   <meta property="og:title" content="harness-router — route tool calls before they run" />
-  <meta property="og:description" content="Fast path first. Jev only for real ambiguity. Bounded MCTS when the next few moves matter." />
+  <meta property="og:description" content="Use the skill to stop reasoning about obvious tool calls, or route automatically with Codex PreToolUse. Bounded MCTS handles deeper ambiguity." />
   <meta name="twitter:card" content="summary_large_image" />
 
   <style>
@@ -1375,9 +1375,9 @@
             run.
           </h1>
           <p class="hero-copy">
-            <strong>harness-router</strong> can intercept every Codex tool call with <code>PreToolUse</code>.
-            Fast route first. Real ambiguity can escalate to Jev-backed MCTS.
-            Confident alternatives make Codex re-plan before the tool executes.
+            <strong>harness-router</strong> works two ways: use the skill to stop model reasoning
+            about obvious tool calls, or let <code>PreToolUse</code> intercept and route calls automatically.
+            Fast <code>route</code> handles ordinary choices; real ambiguity can escalate to Jev-backed MCTS.
           </p>
 
           <div class="install">
@@ -1427,12 +1427,12 @@
       <section class="story" id="why">
         <div class="story-no">01</div>
         <div>
-          <h2>The fastest route is often <em>no router.</em></h2>
+          <h2>Stop reasoning about <em>obvious tool calls.</em></h2>
           <p class="story-copy">
-            Earlier skill-driven routing paid extra planner turns around Jev and made the
-            complete loop slower. The current design reverses the default:
-            <strong>normal tool calling is the fast path.</strong> <code>route</code> exists only for
-            real closed-choice ambiguity.
+            With the skill, Codex can delegate closed-choice tool selection to Harness Router
+            instead of spending a full model reasoning step on an obvious choice.
+            Prefer automatic enforcement? The <code>PreToolUse</code> hook applies the same routing layer
+            before execution without requiring the model to invoke the skill explicitly.
           </p>
         </div>
         <div class="decision-stack">
