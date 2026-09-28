@@ -62,7 +62,7 @@ ohmypi auto-discovers `<cwd>/.omp/extensions`, without walking parent directorie
 Start in the project root. With discovery disabled, explicitly load the extension:
 
 ```bash
-omp --no-extensions --extension /path/to/project/.omp/extensions/harness-router.ts
+omp --no-extensions --extension .omp/extensions/harness-router.ts
 ```
 
 The Python bridge is resolved relative to the extension, so paths with spaces

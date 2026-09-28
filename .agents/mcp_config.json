@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "harness-router": {
+      "command": "/Users/raezil/.local/bin/harness-router-mcp",
+      "args": []
+    }
+  }
+}

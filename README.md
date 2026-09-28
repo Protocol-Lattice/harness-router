@@ -23,6 +23,8 @@
   ·
   <a href="#ohmypi-tool-call-hook">ohmypi hook</a>
   ·
+  <a href="#antigravity-pretooluse-hook">Antigravity hook</a>
+  ·
   <a href="#codex-skill">Codex skill</a>
   ·
   <a href="#native-mcp-server">MCP</a>
@@ -72,7 +74,7 @@ Harness Router decides **which tool should run next**.
 
 ### 1. Hook — route every tool call
 
-Use the Codex or Claude Code `PreToolUse` hook, or the ohmypi `tool_call` extension,
+Use the Codex, Claude Code, or Antigravity `PreToolUse` hook, or the ohmypi `tool_call` extension,
 to intercept pending tool calls before execution.
 
 Harness Router compares the tool the agent chose against its session tool catalog.
@@ -120,7 +122,7 @@ Harness Router gives you:
 
 - ⚡ **Fast `route` path** for ordinary tool ambiguity
 - 🌳 **Bounded `route_mcts`** for multi-step decisions
-- 🪝 **Codex, Claude Code, and ohmypi hooks** for interception before execution
+- 🪝 **Codex, Claude Code, ohmypi, and Antigravity hooks** for interception before execution
 - 🧠 **TypeSafeAI Jev** through OpenRouter Decisions
 - 🔌 **Native MCP server**
 - 🧩 **Framework-agnostic Python API**
@@ -328,7 +330,8 @@ curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/mai
 ```
 
 Run from the Git repository root, or supply `--project /path/to/repo`. The same
-installer supports `--provider claude`, `--provider ohmypi`, and `--provider all`.
+installer supports `--provider claude`, `--provider ohmypi`, `--provider antigravity`,
+and `--provider all`.
 `--provider both` continues to mean Codex + Claude Code. It preserves other
 hooks and settings, backs up changed files as `*.harness-router.bak`, and avoids
 duplicate registrations on repeat runs. Use `--ref TAG_OR_COMMIT` to select a
@@ -432,6 +435,30 @@ are needed. The installer requires Bun to install the pinned TypeScript dependen
 and run the extension's type check in `.omp`. Use `--skip-ohmypi-deps` for a
 files-only installation. See the [ohmypi hook guide](.omp/README.md) for local installation,
 catalog snapshots, settings, and limitations.
+
+---
+
+## Antigravity PreToolUse hook
+
+The [Antigravity integration](.antigravity/README.md) installs native hooks into
+`.agents/hooks.json` and registers `harness-router-mcp` in `.agents/mcp_config.json`.
+Both **`route`** and **`route_mcts`** are available to Antigravity.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider antigravity
+```
+
+Before routing, the hook reads the current conversation's live tool definitions
+from Antigravity's local runtime, including names, descriptions and schemas.
+It filters disabled MCP tools and publishes a session inventory. There is no
+hard-coded tool list; unavailable discovery causes the hook to abstain.
+
+The hook starts with `route`, optionally escalates to `route_mcts` through a
+configured simulator, and asks for one re-plan on a confident alternative.
+Antigravity retains argument generation, permissions and execution. The live
+inventory adapter uses internal runtime APIs; see the guide for compatibility,
+connection settings and explicit catalog overrides.
 
 ---
 

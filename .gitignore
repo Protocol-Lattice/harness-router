@@ -52,6 +52,10 @@ htmlcov/
 # Generated ohmypi / harness-router state
 .omp/harness-router-tools.json
 .omp/harness-router/
+
+# Generated Antigravity / harness-router state
+.antigravity/harness-router-tools.json
+.antigravity/harness-router/
 *.harness-router.bak
 
 # IDE / editor

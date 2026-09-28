@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>harness-router — the fast decision layer for agent harnesses</title>
-  <meta name="description" content="A decision layer for agent harnesses. Route tool calls automatically through Codex PreToolUse, use Jev for fast selection, and bounded MCTS when downstream consequences matter." />
+  <meta name="description" content="Live tool discovery and routing hooks for Codex, Claude Code, ohmypi, and Antigravity. Use route for fast selection and route_mcts for bounded search." />
   <meta name="theme-color" content="#0a0910" />
   <link rel="canonical" href="https://protocol-lattice.github.io/harness-router/" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://protocol-lattice.github.io/harness-router/" />
   <meta property="og:title" content="harness-router — route tool calls before they run" />
-  <meta property="og:description" content="Use the skill to stop reasoning about obvious tool calls, or route automatically with Codex PreToolUse. Bounded MCTS handles deeper ambiguity." />
+  <meta property="og:description" content="Route live tools before they run in Codex, Claude Code, ohmypi, and Antigravity. Use route for fast decisions or route_mcts with a side-effect-free state graph." />
   <meta name="twitter:card" content="summary_large_image" />
 
   <style>
@@ -1601,9 +1601,12 @@
         <div>
           <h2>Native MCP. <em>One tiny choice.</em></h2>
           <p class="story-copy">
-            Codex gets a native stdio server instead of a heavy helper flow.
+            Expose both routing tools through a native stdio server in your MCP client.
             <code>route</code> takes a compact goal, latest observation, and a small shortlist.
             The server keeps its provider alive, reuses connections, and returns a tiny structured result.
+            The <a href="#codex-hook">Antigravity hook installer</a> also registers the server
+            in <code>.agents/mcp_config.json</code>, making <code>route</code> and
+            <code>route_mcts</code> available directly to the agent.
           </p>
         </div>
         <div class="terminal">
@@ -1864,7 +1867,7 @@ tool_timeout_sec = 5
             <h2>Discover tools. Route every call.</h2>
           </div>
           <p>
-            Choose Codex, Claude Code, or ohmypi. The integration reads the available tools,
+            Choose Codex, Claude Code, ohmypi, or Antigravity. The integration reads the available tools,
             then uses Harness Router to check tool choices before execution.
           </p>
         </div>
@@ -1877,14 +1880,16 @@ tool_timeout_sec = 5
             <h3>Add the project hook</h3>
             <p>
               Run the installer in your project root. It adds the integration files and keeps
-              generated state out of Git. Codex and Claude Code get merged hook settings;
-              ohmypi loads its extension automatically.
+              generated state out of Git. Codex, Claude Code, and Antigravity get merged hook
+              settings; ohmypi loads its extension automatically. Antigravity also gets the
+              Harness Router MCP registration.
             </p>
             <fieldset class="hook-provider">
               <legend>Choose your provider</legend>
               <label><input type="radio" name="hook-provider" value="codex" checked /><span>Codex</span></label>
               <label><input type="radio" name="hook-provider" value="claude" /><span>Claude Code</span></label>
               <label><input type="radio" name="hook-provider" value="ohmypi" /><span>ohmypi</span></label>
+              <label><input type="radio" name="hook-provider" value="antigravity" /><span>Antigravity</span></label>
             </fieldset>
             <div class="hook-command-toolbar">
               <span id="hook-install-requirements">Project root · Python 3.11+</span>
@@ -1895,7 +1900,7 @@ tool_timeout_sec = 5
             <p class="hook-install-note">
               Keeps existing settings and other hooks. Backs up changed files. Safe to run again.
               <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/scripts/install_hook.py">View installer ↗</a>
-              Use <code>--provider all</code> for all three, or <code>--provider both</code>
+              Use <code>--provider all</code> for all four, or <code>--provider both</code>
               for Codex and Claude Code.
             </p>
           </article>
@@ -1941,6 +1946,11 @@ tool_timeout_sec = 5
 .omp/package.json
 .omp/bun.lock</code>
                 <p class="hook-install-note">
+                  To start with automatic extension discovery disabled, load Harness Router
+                  explicitly from the project root:
+                </p>
+                <code class="mini-code">omp --no-extensions --extension .omp/extensions/harness-router.ts</code>
+                <p class="hook-install-note">
                   The installer uses Bun to install the pinned TypeScript dependencies and
                   check the extension automatically. Bun must be on your <code>PATH</code>.
                   To repeat the type check later, run:
@@ -1952,6 +1962,32 @@ bun run typecheck</code>
                   and <code>pi.getActiveTools()</code> before each <code>tool_call</code>, including
                   active MCP and extension tools. No separate discovery process or model call.
                   <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/.omp/README.md">ohmypi hook guide ↗</a>
+                </p>
+              </div>
+              <div data-hook-provider-details="antigravity" hidden>
+                <h3>Start a fresh Antigravity session</h3>
+                <p>
+                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  in Antigravity's environment, restart the project session. The installer registers
+                  native <code>PreToolUse</code> and <code>Stop</code> hooks, plus an MCP server
+                  exposing both <code>route</code> and <code>route_mcts</code>.
+                </p>
+                <code class="mini-code">.agents/hooks.json
+.agents/mcp_config.json
+.antigravity/hooks/discover_tools.py
+.antigravity/hooks/pre_tool_use.py</code>
+                <p class="hook-install-note">
+                  Before each routing check, the hook reads the native and MCP tools exposed to
+                  this conversation from the running language server, including their exact names
+                  and schemas. Disabled or disconnected MCP tools are filtered out. A failed
+                  refresh lets the pending call continue without routing from an old catalog.
+                </p>
+                <p class="hook-install-note">
+                  Automatic routing starts with <code>route</code>; escalation to
+                  <code>route_mcts</code> requires a side-effect-free graph provider.
+                  Live discovery uses internal APIs inspected in Antigravity 2.11.0.
+                  See the guide for runtime connection overrides and simulator setup.
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/.antigravity/README.md">Antigravity hook guide ↗</a>
                 </p>
               </div>
             </div>
@@ -1982,7 +2018,7 @@ bun run typecheck</code>
           </div>
           <p>
             Install the latest main branch, expose your OpenRouter key to the local MCP process,
-            and register the server in Codex.
+            and register the server in your agent. The Antigravity hook installer handles registration.
           </p>
         </div>
 
@@ -2077,11 +2113,11 @@ codex mcp list</code>
     const hookProviders = document.querySelectorAll('input[name="hook-provider"]');
     function updateHookInstaller() {
       const provider = document.querySelector('input[name="hook-provider"]:checked').value;
-      const name = { codex: "Codex", claude: "Claude Code", ohmypi: "ohmypi" }[provider];
+      const name = { codex: "Codex", claude: "Claude Code", ohmypi: "ohmypi", antigravity: "Antigravity" }[provider];
       document.getElementById("hook-install-requirements").textContent =
         "Project root · Python 3.11+" + (provider === "ohmypi" ? " · Bun" : "");
       const code = document.getElementById("hook-install-command");
-      code.textContent = code.textContent.replace(/--provider (codex|claude|ohmypi)/, "--provider " + provider);
+      code.textContent = code.textContent.replace(/--provider (codex|claude|ohmypi|antigravity)/, "--provider " + provider);
       const button = document.getElementById("hook-install-copy");
       button.dataset.copy = code.textContent;
       button.setAttribute("aria-label", "Copy " + name + " hook installation command");

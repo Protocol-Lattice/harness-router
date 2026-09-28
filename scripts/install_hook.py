@@ -25,6 +25,7 @@ PROVIDERS = {
     "codex": ("Codex", ".codex/hooks.json"),
     "claude": ("Claude Code", ".claude/settings.json"),
     "ohmypi": ("ohmypi", None),
+    "antigravity": ("Antigravity", ".agents/hooks.json"),
 }
 OHMYPI_ASSETS = (
     ".omp/extensions/harness-router.ts",
@@ -32,6 +33,10 @@ OHMYPI_ASSETS = (
     ".omp/tsconfig.json",
     ".omp/package.json",
     ".omp/bun.lock",
+)
+ANTIGRAVITY_ASSETS = (
+    ".antigravity/hooks/pre_tool_use.py",
+    ".antigravity/hooks/discover_tools.py",
 )
 
 
@@ -58,7 +63,10 @@ def object_from_json(data: bytes, label: str) -> dict[str, Any]:
 
 
 def owned_handler(handler: dict[str, Any], provider: str) -> bool:
-    if handler.get("type") != "command" or not isinstance(handler.get("command"), str):
+    default_type = "command" if provider == "antigravity" else None
+    if handler.get("type", default_type) != "command" or not isinstance(
+        handler.get("command"), str
+    ):
         return False
     try:
         words = shlex.split(handler["command"])
@@ -99,6 +107,69 @@ def merge_config(
     for key, value in template.items():
         if key != "hooks":
             merged.setdefault(key, value)
+    return merged
+
+
+def merge_antigravity_config(
+    existing: dict[str, Any], template: dict[str, Any], root: Path
+) -> dict[str, Any]:
+    """Antigravity maps names to events, with ungrouped handlers for Stop."""
+    incoming = copy.deepcopy(template.get("harness-router"))
+    if not isinstance(incoming, dict) or not {"PreToolUse", "Stop"} <= incoming.keys():
+        raise ValueError("Incomplete antigravity hook template")
+    # Anchor commands to the installation, including non-Git projects and changed cwd.
+    command = shlex.join(["python3", str(root / ".antigravity/hooks/pre_tool_use.py")])
+    for event, suffix in (("PreToolUse", ""), ("Stop", " --stop")):
+        handlers = incoming[event]
+        if not isinstance(handlers, list) or not handlers:
+            raise ValueError(f"Invalid antigravity hook template for {event}")
+        for item in handlers:
+            if not isinstance(item, dict):
+                raise ValueError(f"Invalid antigravity hook template for {event}")
+            nested = item.get("hooks") if event == "PreToolUse" else [item]
+            if not isinstance(nested, list) or not nested:
+                raise ValueError(f"Invalid antigravity hook template for {event}")
+            for handler in nested:
+                if not isinstance(handler, dict) or not owned_handler(handler, "antigravity"):
+                    raise ValueError(f"Invalid antigravity hook template for {event}")
+                handler["command"] = command + suffix
+
+    merged = copy.deepcopy(existing)
+    current = merged.setdefault("harness-router", {})
+    if not isinstance(current, dict):
+        raise ValueError("Existing harness-router hook must be an object; leaving config unchanged")
+    pretool = merge_config(
+        {"hooks": {"PreToolUse": current.get("PreToolUse", [])}},
+        {"hooks": {"PreToolUse": incoming["PreToolUse"]}},
+        "antigravity",
+    )
+    stops = current.get("Stop", [])
+    if not isinstance(stops, list) or not all(isinstance(handler, dict) for handler in stops):
+        raise ValueError("Existing Stop hooks must be an array of handlers; config unchanged")
+    current["PreToolUse"] = pretool["hooks"]["PreToolUse"]
+    current["Stop"] = [
+        handler for handler in stops if not owned_handler(handler, "antigravity")
+    ] + incoming["Stop"]
+    # Keep enabled:false and any other events or metadata already set by the user.
+    return merged
+
+
+def merge_antigravity_mcp(existing: dict[str, Any], template: dict[str, Any]) -> dict[str, Any]:
+    merged = copy.deepcopy(existing)
+    servers = merged.setdefault("mcpServers", {})
+    definitions = template.get("mcpServers")
+    incoming = definitions.get("harness-router") if isinstance(definitions, dict) else None
+    if not isinstance(servers, dict) or not isinstance(incoming, dict):
+        raise ValueError("MCP configuration must contain a mcpServers object")
+    if incoming.get("command") != "harness-router-mcp":
+        raise ValueError("Invalid Antigravity Harness Router MCP template")
+    if "harness-router" in servers:
+        if not isinstance(servers["harness-router"], dict):
+            raise ValueError("Existing harness-router MCP entry must be an object")
+    else:
+        servers["harness-router"] = {
+            **incoming, "command": shutil.which("harness-router-mcp") or "harness-router-mcp"
+        }
     return merged
 
 
@@ -164,19 +235,33 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
             continue
         _, config_path = PROVIDERS[provider]
         assert config_path is not None
-        template = object_from_json(asset(config_path, source, ref), config_path)
-        if not {"SessionStart", "PreToolUse"} <= template.get("hooks", {}).keys():
+        template_path = ".antigravity/hooks.json" if provider == "antigravity" else config_path
+        template = object_from_json(asset(template_path, source, ref), template_path)
+        if provider != "antigravity" and not {"SessionStart", "PreToolUse"} <= template.get(
+            "hooks", {}
+        ).keys():
             raise ValueError(f"Incomplete {provider} hook template")
         # Fetch and validate every asset before modifying any project files.
-        for name in ("discover_tools", "pre_tool_use"):
-            relative = f".{provider}/hooks/{name}.py"
+        assets = ANTIGRAVITY_ASSETS if provider == "antigravity" else (
+            f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_tool_use")
+        )
+        for relative in assets:
             data = asset(relative, source, ref)
-            ast.parse(data, filename=relative, feature_version=(3, 11))
+            if relative.endswith(".py"):
+                ast.parse(data, filename=relative, feature_version=(3, 11))
+            else:
+                catalog = object_from_json(data, relative)
+                if not isinstance(catalog.get("tools"), list):
+                    raise ValueError(f"Invalid tool catalog: {relative}")
             planned[root / relative] = data
         config = root / config_path
         check_target(root, config)
         existing = object_from_json(config.read_bytes(), str(config)) if config.exists() else {}
-        merged = merge_config(existing, template, provider)
+        merged = (
+            merge_antigravity_config(existing, template, root)
+            if provider == "antigravity"
+            else merge_config(existing, template, provider)
+        )
         # Preserve formatting too when the existing configuration already matches.
         planned[config] = (
             config.read_bytes()
@@ -186,11 +271,26 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
         ignore_entries.append(f".{provider}/harness-router-tools.json")
         ignore_entries.append(
             f".{provider}/harness-router/"
-            if provider == "claude"
+            if provider in {"claude", "antigravity"}
             else ".codex/harness-router/sessions/"
         )
         if provider == "claude":
             ignore_entries.append(".claude/settings.local.json")
+        if provider == "antigravity":
+            relative = ".antigravity/mcp_config.json"
+            mcp_template = object_from_json(asset(relative, source, ref), relative)
+            mcp_config = root / ".agents/mcp_config.json"
+            check_target(root, mcp_config)
+            existing_mcp = (
+                object_from_json(mcp_config.read_bytes(), str(mcp_config))
+                if mcp_config.exists() else {}
+            )
+            merged_mcp = merge_antigravity_mcp(existing_mcp, mcp_template)
+            planned[mcp_config] = (
+                mcp_config.read_bytes()
+                if mcp_config.exists() and existing_mcp == merged_mcp
+                else (json.dumps(merged_mcp, indent=2, ensure_ascii=False) + "\n").encode()
+            )
 
     ignore = root / ".gitignore"
     check_target(root, ignore)
@@ -250,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         "--provider",
         required=True,
         choices=[*PROVIDERS, "both", "all"],
-        help="both = Codex + Claude Code; all = Codex + Claude Code + ohmypi",
+        help="both = Codex + Claude Code; all = Codex + Claude Code + ohmypi + Antigravity",
     )
     parser.add_argument("--project", type=Path, default=Path.cwd(), help="target project root")
     parser.add_argument(

@@ -137,8 +137,9 @@ def test_invalid_development_asset_leaves_project_unchanged(tmp_path, monkeypatc
         ("ohmypi", [".omp"]),
         ("codex", [".codex"]),
         ("claude", [".claude"]),
+        ("antigravity", [".antigravity", ".agents"]),
         ("both", [".codex", ".claude"]),
-        ("all", [".codex", ".claude", ".omp"]),
+        ("all", [".codex", ".claude", ".omp", ".antigravity", ".agents"]),
     ],
 )
 def test_stdin_cli_provider_selection_remains_compatible(
@@ -165,7 +166,7 @@ def test_stdin_cli_provider_selection_remains_compatible(
         check=True,
     )
     assert "Installed" in run.stdout
-    for directory in (".codex", ".claude", ".omp"):
+    for directory in (".codex", ".claude", ".omp", ".antigravity", ".agents"):
         assert (project / directory).exists() == (directory in expected)
     if ".omp" in expected:
         assert (project / ".omp/tsconfig.json").is_file()
