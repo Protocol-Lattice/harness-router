@@ -127,6 +127,22 @@ and `use_jev_prior`. With at least three candidates and a fallback/low-confidenc
 fast result, `route_mcts` runs within the same deadline. The simulator must not
 execute actual tool actions. Without a graph provider, only `route` is called.
 
+## TypeScript development
+
+The `.omp/package.json` and `.omp/tsconfig.json` files provide editor and compiler
+support for the extension. They are development files, separate from ohmypi's
+automatic extension registration. Install the pinned types before editing:
+
+```bash
+cd .omp
+bun install --frozen-lockfile --ignore-scripts
+bun run typecheck
+```
+
+The TypeScript project uses Node and Bun globals and resolves the real ohmypi API
+through its published package exports. These development dependencies are not
+needed to run the installed hook. CI runs the same type check.
+
 Runtime contracts: [extension API](https://github.com/can1357/oh-my-pi/blob/main/docs/extensions.md),
 [discovery paths](https://github.com/can1357/oh-my-pi/blob/main/docs/extension-loading.md),
 and [hook interception limits](https://github.com/can1357/oh-my-pi/blob/main/docs/hooks.md).
