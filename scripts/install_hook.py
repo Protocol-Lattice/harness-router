@@ -102,7 +102,10 @@ def owned_handler(handler: dict[str, Any], provider: str) -> bool:
     arguments = handler.get("args", [])
     if isinstance(arguments, list):
         words.extend(argument for argument in arguments if isinstance(argument, str))
-    scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_tool_use")]
+    if provider == "deepseek":
+        scripts = [".dsh/hooks/hook.py"]
+    else:
+        scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_tool_use")]
     return any(
         word == script or word.endswith("/" + script) for word in words for script in scripts
     )
