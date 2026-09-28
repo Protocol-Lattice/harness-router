@@ -19,6 +19,8 @@
   ·
   <a href="#codex-pretooluse-hook">Codex hook</a>
   ·
+  <a href="#claude-code-pretooluse-hook">Claude Code hook</a>
+  ·
   <a href="#codex-skill">Codex skill</a>
   ·
   <a href="#native-mcp-server">MCP</a>
@@ -68,9 +70,9 @@ Harness Router decides **which tool should run next**.
 
 ### 1. Hook — route every tool call
 
-Use the Codex `PreToolUse` hook to intercept pending tool calls before execution.
+Use the Codex or Claude Code `PreToolUse` hook to intercept pending tool calls before execution.
 
-Harness Router compares the tool Codex chose against the session's discovered tool catalog.
+Harness Router compares the tool the agent chose against its session tool catalog.
 
 ```text
 Codex chooses a tool
@@ -89,7 +91,7 @@ Codex chooses a tool
  ask Codex to re-plan
 ```
 
-The hook is **fail-open**: if routing fails, Codex keeps its original choice.
+The hooks are **fail-open**: if routing fails, the agent keeps its original choice.
 
 ### 2. Skill — route only when useful
 
@@ -115,7 +117,7 @@ Harness Router gives you:
 
 - ⚡ **Fast `route` path** for ordinary tool ambiguity
 - 🌳 **Bounded `route_mcts`** for multi-step decisions
-- 🪝 **Codex `PreToolUse` hook** for interception before execution
+- 🪝 **Codex and Claude Code `PreToolUse` hooks** for interception before execution
 - 🧠 **TypeSafeAI Jev** through OpenRouter Decisions
 - 🔌 **Native MCP server**
 - 🧩 **Framework-agnostic Python API**
@@ -318,22 +320,22 @@ The PreToolUse hook uses a **relevant subset** of the discovered catalog rather 
 ### Install the hook in another repo
 
 ```bash
-mkdir -p .codex/hooks
-
-curl -fsSL   https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks.json   -o .codex/hooks.json
-
-curl -fsSL   https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks/discover_tools.py   -o .codex/hooks/discover_tools.py
-
-curl -fsSL   https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks/pre_tool_use.py   -o .codex/hooks/pre_tool_use.py
-
-chmod +x .codex/hooks/discover_tools.py .codex/hooks/pre_tool_use.py
+curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider codex
 ```
 
-Add generated state to `.gitignore`:
+Run from the Git repository root, or supply `--project /path/to/repo`. The same
+installer supports `--provider claude` and `--provider both`. It preserves other
+hooks and settings, backs up changed files as `*.harness-router.bak`, and avoids
+duplicate registrations on repeat runs. Use `--ref TAG_OR_COMMIT` to select a
+version, or `--source /path/to/harness-router` to copy from a local checkout.
+
+The installer adds generated state and backups to `.gitignore`:
 
 ```gitignore
 .codex/harness-router-tools.json
 .codex/harness-router/sessions/
+*.harness-router.bak
 ```
 
 Start a **new Codex session**.
@@ -358,6 +360,38 @@ export HARNESS_ROUTER_PRETOOL_MCTS_THRESHOLD="0.80"
 No graph provider? No fake tree.
 
 Harness Router stays on the fast path.
+
+---
+
+## Claude Code PreToolUse hook
+
+The portable Claude Code integration lives in [`.claude/`](.claude/README.md):
+
+```text
+.claude/settings.json
+.claude/hooks/discover_tools.py
+.claude/hooks/pre_tool_use.py
+```
+
+It follows the same flow: build a session catalog, shortlist tools before a call,
+run `route`, and optionally escalate to `route_mcts`. A confident alternative asks
+Claude to re-plan, with at most one redirect per user turn to prevent loops.
+Errors and fallbacks preserve the original call's normal permission checks.
+
+Install `harness-router-mcp`, export `OPENROUTER_API_KEY`, and start a new Claude
+Code session. For another project, run the universal installer above with
+`--provider claude` to merge the hooks into its `.claude/settings.json`.
+
+At `SessionStart`, the hook publishes a fresh live tool registry by querying the
+Claude native server's complete `tools/list` inventory and its SDK control
+interface for configured MCP tools without a model turn. The session registry
+is available to `PreToolUse` and through `HARNESS_ROUTER_TOOL_REGISTRY` in Claude's
+Bash commands. Run `python3 .claude/hooks/discover_tools.py --list-tools` to query
+it directly as JSON. It uses no hard-coded built-in catalog, and accepts
+supplemental descriptors through
+`HARNESS_ROUTER_CLAUDE_TOOLS_FILE` or `HARNESS_ROUTER_CLAUDE_TOOLS_JSON`.
+See the [Claude hook guide](.claude/README.md) for catalog format, configuration,
+and installation details, using the [official hook format](https://code.claude.com/docs/en/hooks).
 
 ---
 

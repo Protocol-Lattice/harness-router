@@ -41,6 +41,11 @@ htmlcov/
 .codex/harness-router-tools.json
 .codex/harness-router/sessions/
 
+# Generated Claude Code / harness-router state
+.claude/harness-router-tools.json
+.claude/harness-router/
+.claude/settings.local.json
+
 # IDE / editor
 .idea/
 .vscode/

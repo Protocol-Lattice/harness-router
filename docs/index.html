@@ -893,6 +893,52 @@
       line-height: 1.7;
     }
 
+    .hook-provider {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 0 0 20px;
+      padding: 0;
+      border: 0;
+    }
+
+    .hook-provider legend {
+      margin-bottom: 10px;
+      color: var(--muted);
+      font: 10px/1.5 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    .hook-provider label { position: relative; cursor: pointer; }
+    .hook-provider input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+    .hook-provider span {
+      display: flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 10px 17px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--muted);
+      font: 12px/1.4 var(--mono);
+    }
+    .hook-provider input:checked + span {
+      border-color: var(--pink);
+      color: var(--pink);
+      background: var(--pink-soft);
+    }
+    .hook-provider input:focus-visible + span { outline: 2px solid var(--pink); outline-offset: 3px; }
+    .hook-command-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font: 10px/1.5 var(--mono);
+    }
+    #codex-hook .hook-install-note { margin: 14px 0 0; font-size: 12px; }
+
     .hook-behavior {
       margin-top: 22px;
       display: grid;
@@ -1814,13 +1860,12 @@ tool_timeout_sec = 5
       <section class="install-section" id="codex-hook">
         <div class="install-head">
           <div>
-            <div class="section-id">$ 06 · Codex Hook Flow</div>
+            <div class="section-id">$ 06 · Project Hooks</div>
             <h2>Discover once. Route every call.</h2>
           </div>
           <p>
-            On a fresh Codex startup, Harness Router discovers the MCP inventory immediately,
-            writes the full tool catalog, then reuses that catalog for every
-            <code>PreToolUse</code> decision.
+            Choose Codex or Claude Code. The project hook prepares a session tool catalog,
+            then uses Harness Router to check tool choices before execution.
           </p>
         </div>
 
@@ -1828,33 +1873,57 @@ tool_timeout_sec = 5
 
 
           <article class="install-step">
-            <div class="num">01 · COPY HOOK</div>
+            <div class="num">01 · INSTALL HOOK</div>
             <h3>Add the project hook</h3>
             <p>
-              Copy the hook config plus both Python scripts into the repository where Codex runs.
+              Run the installer in your project root. It adds the hook scripts, merges the
+              configuration, and keeps generated state out of Git.
             </p>
-            <code class="mini-code">mkdir -p .codex/hooks
-
-curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks.json \
-  -o .codex/hooks.json
-
-curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks/discover_tools.py \
-  -o .codex/hooks/discover_tools.py
-
-curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks/pre_tool_use.py \
-  -o .codex/hooks/pre_tool_use.py</code>
+            <fieldset class="hook-provider">
+              <legend>Choose your provider</legend>
+              <label><input type="radio" name="hook-provider" value="codex" checked /><span>Codex</span></label>
+              <label><input type="radio" name="hook-provider" value="claude" /><span>Claude Code</span></label>
+            </fieldset>
+            <div class="hook-command-toolbar">
+              <span>Project root · Python 3.11+</span>
+              <button class="copy" id="hook-install-copy" type="button" data-copy="" aria-label="Copy Codex hook installation command">copy</button>
+            </div>
+            <code class="mini-code" id="hook-install-command">curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider codex</code>
+            <p class="hook-install-note">
+              Keeps existing settings and other hooks. Backs up changed files. Safe to run again.
+              <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/scripts/install_hook.py">View installer ↗</a>
+            </p>
           </article>
 
           <article class="install-step">
             <div class="num">02 · START</div>
-            <h3>Start a fresh Codex session</h3>
-            <p>
-              <code>SessionStart</code> runs only for <code>startup</code>.
-              It queries <code>codex app-server</code> via <code>mcpServerStatus/list</code>
-              and writes the complete catalog before the model starts using tools.
-            </p>
-            <code class="mini-code">.codex/harness-router-tools.json
-.codex/harness-router/sessions/&lt;session_id&gt;.json</code>
+            <div aria-live="polite">
+              <div data-hook-provider-details="codex">
+                <h3>Start a fresh Codex session</h3>
+                <p>
+                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  exported, start Codex. The startup hook discovers its MCP tool inventory
+                  and builds the session catalog.
+                </p>
+                <code class="mini-code">.codex/hooks.json
+.codex/hooks/discover_tools.py
+.codex/hooks/pre_tool_use.py</code>
+              </div>
+              <div data-hook-provider-details="claude" hidden>
+                <h3>Start a fresh Claude Code session</h3>
+                <p>
+                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  exported, start Claude Code. The startup hook discovers native tools from
+                  <code>claude mcp serve</code> and configured MCP tools through the SDK control
+                  interface, then publishes the live registry for routing and session commands
+                  via <code>HARNESS_ROUTER_TOOL_REGISTRY</code>. Discovery makes no model call.
+                </p>
+                <code class="mini-code">.claude/settings.json
+.claude/hooks/discover_tools.py
+.claude/hooks/pre_tool_use.py</code>
+              </div>
+            </div>
           </article>
         </div>
 
@@ -1868,7 +1937,7 @@ curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/mai
             decision is uncertain and a side-effect-free graph provider is configured, the hook
             can escalate to <code>route_mcts</code>. Without a graph provider it never invents an
             MCTS tree. Same choice, fallback, timeout, or router error lets the original call
-            continue. A different confident choice blocks only that call and asks Codex to
+            continue. A different confident choice blocks only that call and asks your agent to
             re-plan once. Sandbox and approval rules remain untouched.
           </p>
         </div>
@@ -1973,6 +2042,22 @@ codex mcp list</code>
         window.prompt("Copy command:", text);
       }
     }
+
+    const hookProviders = document.querySelectorAll('input[name="hook-provider"]');
+    function updateHookInstaller() {
+      const provider = document.querySelector('input[name="hook-provider"]:checked').value;
+      const name = provider === "claude" ? "Claude Code" : "Codex";
+      const code = document.getElementById("hook-install-command");
+      code.textContent = code.textContent.replace(/--provider (codex|claude)/, "--provider " + provider);
+      const button = document.getElementById("hook-install-copy");
+      button.dataset.copy = code.textContent;
+      button.setAttribute("aria-label", "Copy " + name + " hook installation command");
+      document.querySelectorAll("[data-hook-provider-details]").forEach((details) => {
+        details.hidden = details.dataset.hookProviderDetails !== provider;
+      });
+    }
+    hookProviders.forEach((input) => input.addEventListener("change", updateHookInstaller));
+    updateHookInstaller();
 
     document.querySelectorAll("[data-copy]").forEach((button) => {
       button.addEventListener("click", () => copyText(button.dataset.copy, button));

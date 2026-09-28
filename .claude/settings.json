@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/discover_tools.py\"",
+            "timeout": 10,
+            "statusMessage": "Building Harness Router tool catalog"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre_tool_use.py\"",
+            "timeout": 5,
+            "statusMessage": "Routing tool choice with Harness Router"
+          }
+        ]
+      }
+    ]
+  }
+}
