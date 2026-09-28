@@ -230,6 +230,63 @@ def atomic_write(path: Path, data: bytes, mode: int) -> None:
             os.unlink(temporary)
 
 
+
+def uninstall_deepseek(project: Path) -> list[Path]:
+    root = project.resolve()
+    config = root / ".dsh/harness-router-hooks.json"
+    hook = root / ".dsh/hooks/hook.py"
+    patch = root / ".dsh/harness-router.patch.yml"
+    removed: list[Path] = []
+
+    if config.exists():
+        check_target(root, config)
+        existing = object_from_json(config.read_bytes(), str(config))
+        hooks = existing.get("hooks", {})
+        if not isinstance(hooks, dict):
+            raise ValueError(f"{config} must contain a hooks object")
+        cleaned = copy.deepcopy(existing)
+        cleaned_hooks = cleaned["hooks"]
+        for event, groups in list(cleaned_hooks.items()):
+            if not isinstance(groups, list):
+                continue
+            kept_groups = []
+            for group in groups:
+                if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                    kept_groups.append(group)
+                    continue
+                remaining = [h for h in group["hooks"] if not owned_handler(h, "deepseek")]
+                if remaining:
+                    kept_groups.append({**group, "hooks": remaining})
+            if kept_groups:
+                cleaned_hooks[event] = kept_groups
+            else:
+                cleaned_hooks.pop(event, None)
+
+        if cleaned != existing:
+            if cleaned.get("hooks"):
+                atomic_write(
+                    config,
+                    (json.dumps(cleaned, indent=2, ensure_ascii=False) + "\n").encode(),
+                    stat.S_IMODE(config.stat().st_mode),
+                )
+            else:
+                config.unlink()
+                removed.append(config)
+
+    for path in (hook, patch):
+        if path.exists():
+            check_target(root, path)
+            path.unlink()
+            removed.append(path)
+    return removed
+
+
+def uninstall(project: Path, providers: list[str]) -> list[Path]:
+    if providers != ["deepseek"]:
+        raise ValueError("uninstall currently supports only the deepseek provider")
+    return uninstall_deepseek(project)
+
+
 def install(project: Path, providers: list[str], source: Path | None, ref: str) -> list[Path]:
     root = project.resolve()
     if not root.is_dir():
