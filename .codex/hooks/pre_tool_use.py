@@ -308,10 +308,10 @@ def _similar_tools(
     ]
 
 
-def _mcp_binary() -> str | None:
-    return (
-        os.environ.get("HARNESS_ROUTER_MCP_BIN")
-        or shutil.which("harness-router-mcp")
+def _mcp_endpoint() -> str:
+    return os.environ.get(
+        "HARNESS_ROUTER_MCP_URL",
+        "http://127.0.0.1:8765/mcp",
     )
 
 
@@ -466,7 +466,7 @@ def _should_try_mcts(
 
 def _mcp_route_hybrid(
     *,
-    binary: str,
+    endpoint: str,
     cwd: str,
     goal: str,
     observation: str,
@@ -475,131 +475,108 @@ def _mcp_route_hybrid(
     timeout: float,
 ) -> tuple[dict[str, Any], str]:
     import time
+    import urllib.error
+    import urllib.request
 
-    proc = subprocess.Popen(
-        [binary],
-        cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-        env=os.environ.copy(),
+    deadline = time.monotonic() + timeout
+    next_id = 0
+
+    def request(method: str, params: dict[str, Any]) -> dict[str, Any]:
+        nonlocal next_id
+        next_id += 1
+        body = json.dumps({
+            "jsonrpc": "2.0",
+            "id": next_id,
+            "method": method,
+            "params": params,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            endpoint.rstrip("/"),
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "MCP-Protocol-Version": "2025-06-18",
+            },
+            method="POST",
+        )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Harness Router timed out")
+        try:
+            with urllib.request.urlopen(req, timeout=remaining) as response:
+                raw = response.read()
+        except urllib.error.URLError as exc:
+            raise RuntimeError("Harness Router HTTP endpoint unavailable") from exc
+        if not raw:
+            return {}
+        message = json.loads(raw.decode("utf-8"))
+        if not isinstance(message, dict):
+            return {}
+        if "error" in message:
+            raise RuntimeError(str(message["error"]))
+        result = message.get("result")
+        return result if isinstance(result, dict) else {}
+
+    def call(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        response = request("tools/call", {"name": name, "arguments": arguments})
+        return _extract_mcp_tool_result(response)
+
+    request(
+        "initialize",
+        {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "harness-router-codex-hook", "version": "1"},
+        },
     )
 
-    try:
-        deadline = time.monotonic() + timeout
+    route_tools = [
+        {
+            "name": tool["name"],
+            "description": str(tool.get("description", "")),
+            "category": tool.get("category"),
+            "risk": str(tool.get("risk", "medium")),
+        }
+        for tool in candidates
+    ]
+    route_result = call(
+        "route",
+        {
+            "goal": goal,
+            "observation": observation,
+            "tools": route_tools,
+        },
+    )
 
-        _mcp_send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2025-06-18",
-                    "capabilities": {},
-                    "clientInfo": {
-                        "name": "harness-router-codex-hook",
-                        "version": "1",
-                    },
-                },
-            },
-        )
-        _mcp_read_response(proc, 1, deadline)
+    if not _should_try_mcts(route_result, len(candidates)):
+        return route_result, "route"
 
-        _mcp_send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized",
-                "params": {},
-            },
-        )
+    remaining = max(0.1, deadline - time.monotonic())
+    graph = _build_mcts_graph(
+        cwd=cwd,
+        goal=goal,
+        observation=observation,
+        current=current,
+        candidates=candidates,
+        route_result=route_result,
+        timeout=remaining,
+    )
+    if graph is None or deadline <= time.monotonic():
+        return route_result, "route"
 
-        route_tools = [
-            {
-                "name": tool["name"],
-                "description": str(tool.get("description", "")),
-                "category": tool.get("category"),
-                "risk": str(tool.get("risk", "medium")),
-            }
-            for tool in candidates
-        ]
-
-        _mcp_send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "tools/call",
-                "params": {
-                    "name": "route",
-                    "arguments": {
-                        "goal": goal,
-                        "observation": observation,
-                        "tools": route_tools,
-                    },
-                },
-            },
-        )
-        route_response = _mcp_read_response(proc, 2, deadline)
-        route_result = _extract_mcp_tool_result(route_response)
-
-        if not _should_try_mcts(route_result, len(candidates)):
-            return route_result, "route"
-
-        remaining = max(0.1, deadline - time.monotonic())
-        graph = _build_mcts_graph(
-            cwd=cwd,
-            goal=goal,
-            observation=observation,
-            current=current,
-            candidates=candidates,
-            route_result=route_result,
-            timeout=remaining,
-        )
-        if graph is None:
-            return route_result, "route"
-
-        simulations = graph.get("simulations", DEFAULT_MCTS_SIMULATIONS)
-        max_depth = graph.get("max_depth", DEFAULT_MCTS_MAX_DEPTH)
-        use_jev_prior = graph.get("use_jev_prior", True)
-
-        _mcp_send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 3,
-                "method": "tools/call",
-                "params": {
-                    "name": "route_mcts",
-                    "arguments": {
-                        "root_state": graph["root_state"],
-                        "states": graph["states"],
-                        "transitions": graph["transitions"],
-                        "simulations": int(simulations),
-                        "max_depth": int(max_depth),
-                        "use_jev_prior": bool(use_jev_prior),
-                    },
-                },
-            },
-        )
-        mcts_response = _mcp_read_response(proc, 3, deadline)
-        mcts_result = _extract_mcp_tool_result(mcts_response)
-        if not mcts_result:
-            return route_result, "route"
-
-        return mcts_result, "route_mcts"
-    finally:
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=0.5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=0.5)
-
+    mcts_result = call(
+        "route_mcts",
+        {
+            "root_state": graph["root_state"],
+            "states": graph["states"],
+            "transitions": graph["transitions"],
+            "simulations": int(graph.get("simulations", DEFAULT_MCTS_SIMULATIONS)),
+            "max_depth": int(graph.get("max_depth", DEFAULT_MCTS_MAX_DEPTH)),
+            "use_jev_prior": bool(graph.get("use_jev_prior", True)),
+        },
+    )
+    return (mcts_result, "route_mcts") if mcts_result else (route_result, "route")
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -650,7 +627,7 @@ def main() -> int:
         f"tool_input={_compact_tool_input(payload.get('tool_input'))}"
     )[:MAX_OBSERVATION_CHARS]
 
-    binary = _mcp_binary()
+    endpoint = _mcp_endpoint()
     if not binary:
         _allow()
         return 0
@@ -664,7 +641,7 @@ def main() -> int:
 
     try:
         result, routing_mode = _mcp_route_hybrid(
-            binary=binary,
+            endpoint=endpoint,
             cwd=cwd,
             goal=goal,
             observation=observation,
