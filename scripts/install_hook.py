@@ -184,25 +184,6 @@ def merge_antigravity_config(
     return merged
 
 
-def merge_antigravity_mcp(existing: dict[str, Any], template: dict[str, Any]) -> dict[str, Any]:
-    merged = copy.deepcopy(existing)
-    servers = merged.setdefault("mcpServers", {})
-    definitions = template.get("mcpServers")
-    incoming = definitions.get("harness-router") if isinstance(definitions, dict) else None
-    if not isinstance(servers, dict) or not isinstance(incoming, dict):
-        raise ValueError("MCP configuration must contain a mcpServers object")
-    if incoming.get("command") != "harness-router-mcp":
-        raise ValueError("Invalid Antigravity Harness Router MCP template")
-    if "harness-router" in servers:
-        if not isinstance(servers["harness-router"], dict):
-            raise ValueError("Existing harness-router MCP entry must be an object")
-    else:
-        servers["harness-router"] = {
-            **incoming, "command": shutil.which("harness-router-mcp") or "harness-router-mcp"
-        }
-    return merged
-
-
 def check_target(root: Path, path: Path) -> None:
     # Project hooks must not follow a symlink into global configuration.
     for candidate in (path, *path.parents):
@@ -396,21 +377,7 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
         )
         if provider == "claude":
             ignore_entries.append(".claude/settings.local.json")
-        if provider == "antigravity":
-            relative = ".antigravity/mcp_config.json"
-            mcp_template = object_from_json(asset(relative, source, ref), relative)
-            mcp_config = root / ".agents/mcp_config.json"
-            check_target(root, mcp_config)
-            existing_mcp = (
-                object_from_json(mcp_config.read_bytes(), str(mcp_config))
-                if mcp_config.exists() else {}
-            )
-            merged_mcp = merge_antigravity_mcp(existing_mcp, mcp_template)
-            planned[mcp_config] = (
-                mcp_config.read_bytes()
-                if mcp_config.exists() and existing_mcp == merged_mcp
-                else (json.dumps(merged_mcp, indent=2, ensure_ascii=False) + "\n").encode()
-            )
+
 
     ignore = root / ".gitignore"
     check_target(root, ignore)
@@ -532,7 +499,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Updated {len(changed)} files; previous contents are saved in *{BACKUP_SUFFIX}.")
     else:
         print(f"{names} hooks are already up to date in {args.project.resolve()}")
-    print("Routing requires harness-router-mcp on PATH and OPENROUTER_API_KEY.")
+    print("Routing uses the harness-router CLI on PATH and OPENROUTER_API_KEY.")
     if bun is not None:
         print("ohmypi TypeScript dependencies are installed and typecheck passed.")
     elif "ohmypi" in providers:
