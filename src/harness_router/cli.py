@@ -55,6 +55,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Bypass the persistent local router daemon.",
     )
+    route.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable route-decision caching for this request.",
+    )
     return parser
 
 
@@ -85,6 +90,7 @@ def _request_payload(args: argparse.Namespace) -> dict[str, Any]:
         "direct_threshold": args.direct_threshold,
         "fallback_threshold": args.fallback_threshold,
         "hierarchical_threshold": args.hierarchical_threshold,
+        "route_cache_size": 0 if args.no_cache else 128,
     }
 
 
@@ -100,6 +106,7 @@ async def _run_direct(request: Mapping[str, Any]) -> tuple[dict[str, object], in
             direct_execution_threshold=float(request["direct_threshold"]),
             fallback_threshold=float(request["fallback_threshold"]),
             hierarchical_threshold=int(request["hierarchical_threshold"]),
+            route_cache_size=int(request.get("route_cache_size", 128)),
         ),
     )
 
