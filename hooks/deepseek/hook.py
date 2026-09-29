@@ -314,7 +314,7 @@ def main() -> int:
         return 0
 
     endpoint = os.environ.get("HARNESS_ROUTER_MCP_URL", "http://127.0.0.1:8765/mcp")
-    if not binary:
+    if not endpoint:
         allow()
         return 0
 
