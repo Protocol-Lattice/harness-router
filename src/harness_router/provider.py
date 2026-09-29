@@ -57,6 +57,11 @@ class OpenRouterJevProvider:
             ),
         )
 
+    @property
+    def requests_made(self) -> int:
+        """Number of OpenRouter HTTP requests attempted by this provider."""
+        return self._requests_made
+
     @classmethod
     def from_config(
         cls,
