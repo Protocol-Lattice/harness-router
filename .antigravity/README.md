@@ -133,7 +133,7 @@ invoke either registered MCP tool directly with the required inputs.
 
 | Environment variable | Default | Purpose |
 | --- | --- | --- |
-| `HARNESS_ROUTER_MCP_BIN` | Find `harness-router-mcp` on `PATH` | Router executable |
+| `HARNESS_ROUTER_MCP_URL` | `http://127.0.0.1:8765/mcp` | Persistent MCP HTTP endpoint |
 | `HARNESS_ROUTER_DISCOVERY_TIMEOUT` | `2` | Live inventory deadline in seconds |
 | `HARNESS_ROUTER_PRETOOL_TIMEOUT` | `4` | Routing deadline in seconds |
 | `HARNESS_ROUTER_PRETOOL_MAX_CANDIDATES` | `8` | Shortlist size, bounded to 2–32 |
