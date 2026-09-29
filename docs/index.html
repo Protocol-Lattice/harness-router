@@ -1616,7 +1616,7 @@
             <span class="terminal-dots"><i></i><i></i><i></i></span>
           </div>
           <pre><code><span class="pink">[mcp_servers.harness-router]</span>
-command = "harness-router-mcp"
+command = "harness-router-mcp"<br>Endpoint hooks use <code>http://127.0.0.1:8765/mcp</code>
 env_vars = ["OPENROUTER_API_KEY"]
 enabled = true
 startup_timeout_sec = 10
@@ -1913,7 +1913,7 @@ tool_timeout_sec = 5
               <div data-hook-provider-details="codex">
                 <h3>Start a fresh Codex session</h3>
                 <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  Start <code>harness-router-mcp --transport streamable-http</code> once, then export <code>OPENROUTER_API_KEY</code>
                   exported, start Codex. The startup hook discovers its MCP tool inventory
                   and builds the session catalog.
                 </p>
@@ -1924,7 +1924,7 @@ tool_timeout_sec = 5
               <div data-hook-provider-details="claude" hidden>
                 <h3>Start a fresh Claude Code session</h3>
                 <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  Start <code>harness-router-mcp --transport streamable-http</code> once, then export <code>OPENROUTER_API_KEY</code>
                   exported, start Claude Code. The startup hook discovers native tools from
                   <code>claude mcp serve</code> and configured MCP tools through the SDK control
                   interface, then publishes the live registry for routing and session commands
@@ -1937,7 +1937,7 @@ tool_timeout_sec = 5
               <div data-hook-provider-details="ohmypi" hidden>
                 <h3>Start ohmypi in your project</h3>
                 <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  Start <code>harness-router-mcp --transport streamable-http</code> once, then export <code>OPENROUTER_API_KEY</code>
                   exported, run <code>omp</code> from the project root. It automatically loads
                   <code>.omp/extensions/harness-router.ts</code>; no hook configuration file
                   is needed.
@@ -1969,7 +1969,7 @@ bun run typecheck</code>
               <div data-hook-provider-details="deepseek" hidden>
                 <h3>Start DeepSeek Harness</h3>
                 <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  Start <code>harness-router-mcp --transport streamable-http</code> once, then export <code>OPENROUTER_API_KEY</code>
                   exported, install the DeepSeek Harness hook. It uses DeepSeek's supported
                   <code>tools/pre-execute</code> interception point through the
                   <code>@deepseek-ai/dsh-hooks-codex</code> bridge.
@@ -1986,7 +1986,7 @@ bun run typecheck</code>
               <div data-hook-provider-details="antigravity" hidden>
                 <h3>Start a fresh Antigravity session</h3>
                 <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  Start <code>harness-router-mcp --transport streamable-http</code> once, then export <code>OPENROUTER_API_KEY</code>
                   in Antigravity's environment, restart the project session. The installer registers
                   native <code>PreToolUse</code> and <code>Stop</code> hooks, plus an MCP server
                   exposing both <code>route</code> and <code>route_mcts</code>.
