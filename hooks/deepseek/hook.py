@@ -230,7 +230,7 @@ def main() -> int:
     goal = str(payload.get("goal") or "Choose the best next DeepSeek tool for the current task.")[:1600]
     observation = (
         f"DeepSeek is about to call {current!r}. "
-        f"tool_input={json.dumps(payload.get("tool_input"), ensure_ascii=False)[:600]}"
+        f"tool_input={json.dumps(payload.get('tool_input'), ensure_ascii=False)[:600]}"
     )[:900]
     import time
     started = time.monotonic()
