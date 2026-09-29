@@ -105,7 +105,8 @@ def owned_handler(handler: dict[str, Any], provider: str) -> bool:
     if provider == "deepseek":
         scripts = [".dsh/hooks/hook.py"]
     else:
-        scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_tool_use")]
+        names = ("discover_tools", "pre_tool_use", "session_start") if provider == "codex" else ("discover_tools", "pre_tool_use")
+        scripts = [f".{provider}/hooks/{name}.py" for name in names]
     return any(
         word == script or word.endswith("/" + script) for word in words for script in scripts
     )
@@ -363,7 +364,8 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
             raise ValueError(f"Incomplete {provider} hook template")
         # Fetch and validate every asset before modifying any project files.
         assets = ANTIGRAVITY_ASSETS if provider == "antigravity" else (
-            f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_tool_use")
+            f".{provider}/hooks/{name}.py"
+            for name in (("session_start", "discover_tools", "pre_tool_use") if provider == "codex" else ("discover_tools", "pre_tool_use"))
         )
         for relative in assets:
             data = asset(relative, source, ref)
@@ -533,6 +535,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"{names} hooks are already up to date in {args.project.resolve()}")
     print("Routing requires harness-router-mcp on PATH and OPENROUTER_API_KEY.")
+    if "codex" in providers:
+        print("Codex SessionStart starts a persistent HTTP MCP on 127.0.0.1:8765; PreToolUse reuses it.")
     if bun is not None:
         print("ohmypi TypeScript dependencies are installed and typecheck passed.")
     elif "ohmypi" in providers:
