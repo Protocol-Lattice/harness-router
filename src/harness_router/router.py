@@ -23,14 +23,11 @@ class JevToolRouter:
         self._provider = provider
         self._config = config or RoutingConfig()
         self._route_cache: OrderedDict[tuple[object, ...], RouteDecision] = OrderedDict()
+        self._obvious_cache: OrderedDict[tuple[object, ...], tuple[float, RouteDecision]] = OrderedDict()
         if self._config.mode is not RoutingMode.PLANNER_ONLY and provider is None:
             raise ValueError("provider is required unless routing mode is planner_only")
 
-    async def route(
-        self,
-        state: HarnessState,
-        tools: Sequence[ToolDescriptor],
-    ) -> RouteDecision:
+    async def route(self, state: HarnessState, tools: Sequence[ToolDescriptor]) -> RouteDecision:
         if self._config.mode is RoutingMode.PLANNER_ONLY:
             return RouteDecision.fallback_to_planner("planner_only")
         if not tools:
@@ -38,16 +35,26 @@ class JevToolRouter:
 
         self._validate_tools(tools)
         state_text = self._state_text(state)
+
+        # One low/medium-risk tool is deterministic: never pay for Jev in this case.
+        obvious = self._obvious_decision(tools)
+        if obvious is not None:
+            logger.debug("jev_route obvious tool=%s", obvious.tool)
+            return obvious
+
         cache_key = self._cache_key(state_text, tools)
         cached = self._cache_get(cache_key)
         if cached is not None:
-            logger.debug(
-                "jev_route cache_hit tool=%s fallback=%s reason=%s",
-                cached.tool,
-                cached.fallback,
-                cached.fallback_reason,
-            )
+            logger.debug("jev_route cache_hit tool=%s", cached.tool)
             return cached
+
+        # Reuse high-confidence Jev choices when the goal/toolset is unchanged,
+        # even if observations evolve between PreToolUse calls.
+        obvious_key = self._obvious_cache_key(state, tools)
+        cached_obvious = self._obvious_cache_get(obvious_key)
+        if cached_obvious is not None:
+            logger.debug("jev_route obvious_cache_hit tool=%s", cached_obvious.tool)
+            return cached_obvious
 
         started = time.perf_counter()
         try:
@@ -60,6 +67,11 @@ class JevToolRouter:
                 decision = await self._choose_tool(state_text, tools)
             decision = self._apply_confidence_policy(decision)
             self._cache_put(cache_key, decision)
+            if (
+                not decision.fallback
+                and decision.confidence >= self._config.direct_execution_threshold
+            ):
+                self._obvious_cache_put(obvious_key, decision)
         except ProviderError as exc:
             if self._config.mode is RoutingMode.JEV_ONLY:
                 raise
@@ -81,10 +93,56 @@ class JevToolRouter:
         )
         return decision
 
+    def _obvious_decision(self, tools: Sequence[ToolDescriptor]) -> RouteDecision | None:
+        if len(tools) != 1:
+            return None
+        tool = tools[0]
+        if tool.risk.value not in {"low", "medium"}:
+            return None
+        return RouteDecision(
+            tool=tool.name,
+            category=tool.category or infer_category(tool.name, tool.description),
+            confidence=1.0,
+        )
+
+    def _obvious_cache_key(
+        self, state: HarnessState, tools: Sequence[ToolDescriptor]
+    ) -> tuple[object, ...]:
+        return (
+            "jev",
+            self._normalize_goal(state.goal),
+            tuple((tool.name, tool.description, tool.category, tool.risk.value) for tool in tools),
+        )
+
+    @staticmethod
+    def _normalize_goal(goal: str) -> str:
+        return " ".join(goal.lower().split())
+
+    def _obvious_cache_get(self, key: tuple[object, ...]) -> RouteDecision | None:
+        if self._config.obvious_cache_size == 0:
+            return None
+        entry = self._obvious_cache.get(key)
+        if entry is None:
+            return None
+        created, decision = entry
+        if time.monotonic() - created > self._config.obvious_cache_ttl_seconds:
+            self._obvious_cache.pop(key, None)
+            return None
+        self._obvious_cache.move_to_end(key)
+        return decision
+
+    def _obvious_cache_put(
+        self, key: tuple[object, ...], decision: RouteDecision
+    ) -> None:
+        if self._config.obvious_cache_size == 0:
+            return
+        self._obvious_cache[key] = (time.monotonic(), decision)
+        self._obvious_cache.move_to_end(key)
+        while len(self._obvious_cache) > self._config.obvious_cache_size:
+            self._obvious_cache.popitem(last=False)
+
     async def _route_hierarchical(
-        self,
-        state_text: str,
-        tools: Sequence[ToolDescriptor],
+        self, state_text: str, tools: Sequence[ToolDescriptor]
     ) -> RouteDecision:
         groups: dict[str, list[ToolDescriptor]] = defaultdict(list)
         for tool in tools:
@@ -149,9 +207,7 @@ class JevToolRouter:
 
         choice = await self._provider.choose(
             state=state_text,
-            instructions=(
-                "Choose the next tool; use __fallback__ if none fit or reasoning is required."
-            ),
+            instructions="Choose the next tool; use __fallback__ if none fit.",
             criteria=criteria,
         )
         if choice.choice == _FALLBACK:
@@ -198,10 +254,7 @@ class JevToolRouter:
     def _state_text(self, state: HarnessState) -> str:
         payload = state.compact(history_limit=self._config.history_limit)
         payload["goal"] = self._clip_text(payload["goal"], self._config.state_field_limit)
-        payload["observation"] = self._clip_text(
-            payload["observation"],
-            self._config.state_field_limit,
-        )
+        payload["observation"] = self._clip_text(payload["observation"], self._config.state_field_limit)
         payload["constraints"] = [
             self._clip_text(value, self._config.state_field_limit)
             for value in payload["constraints"][: self._config.constraint_limit]
@@ -231,9 +284,7 @@ class JevToolRouter:
         return f"{category}:{names}{suffix}"
 
     def _should_route_hierarchical(
-        self,
-        state_text: str,
-        tools: Sequence[ToolDescriptor],
+        self, state_text: str, tools: Sequence[ToolDescriptor]
     ) -> bool:
         if not self._config.adaptive_hierarchy:
             return True
@@ -260,13 +311,10 @@ class JevToolRouter:
             self._choice_payload_chars(state_text, members) for members in groups.values()
         )
         hierarchical_chars = category_chars + second_stage_chars
-        required_savings = self._config.hierarchical_min_savings_ratio
-        return hierarchical_chars <= flat_chars * (1.0 - required_savings)
+        return hierarchical_chars <= flat_chars * (1.0 - self._config.hierarchical_min_savings_ratio)
 
     def _choice_payload_chars(
-        self,
-        state_text: str,
-        tools: Sequence[ToolDescriptor],
+        self, state_text: str, tools: Sequence[ToolDescriptor]
     ) -> int:
         criteria_chars = sum(
             len(tool.name) + len(self._tool_description(tool)) for tool in tools
@@ -274,16 +322,11 @@ class JevToolRouter:
         return len(state_text) + criteria_chars + len(_FALLBACK) + 96
 
     def _cache_key(
-        self,
-        state_text: str,
-        tools: Sequence[ToolDescriptor],
+        self, state_text: str, tools: Sequence[ToolDescriptor]
     ) -> tuple[object, ...]:
         return (
             state_text,
-            tuple(
-                (tool.name, tool.description, tool.category, tool.risk.value)
-                for tool in tools
-            ),
+            tuple((tool.name, tool.description, tool.category, tool.risk.value) for tool in tools),
         )
 
     def _cache_get(self, key: tuple[object, ...]) -> RouteDecision | None:
