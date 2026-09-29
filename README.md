@@ -100,7 +100,7 @@ The hooks are **fail-open**: if routing fails, the agent keeps its original choi
 
 ### Hook decision latency
 
-All five hook integrations use the same `harness-router-mcp` routing core, so the decision itself is not a different model per harness. The latest recorded ordinary-routing benchmark measured the shared `route` decision at **404.5 ms mean / 332 ms median / 718 ms p95** over 24 choices. The 4,096-simulation `route_mcts` benchmark measured **388 ms mean / 372.5 ms median / 545 ms p95**.
+All five hook integrations use the same persistent `harness-router-mcp` HTTP endpoint, so `PreToolUse` never starts or stops an MCP process. The decision itself is not a different model per harness. The latest recorded ordinary-routing benchmark measured the shared `route` decision at **404.5 ms mean / 332 ms median / 718 ms p95** over 24 choices. The 4,096-simulation `route_mcts` benchmark measured **388 ms mean / 372.5 ms median / 545 ms p95**.
 
 | Hook | Routing decision | Measured router latency |
 | --- | --- | ---: |
@@ -182,8 +182,10 @@ The default provider uses the OpenRouter Decisions API.
 Start the MCP server:
 
 ```bash
-harness-router-mcp
+harness-router-mcp --transport streamable-http
 ```
+
+The hooks call `http://127.0.0.1:8765/mcp` by default. Override it with `HARNESS_ROUTER_MCP_URL`.
 
 Or route directly from the CLI:
 
