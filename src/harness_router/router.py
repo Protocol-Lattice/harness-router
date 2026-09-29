@@ -36,12 +36,6 @@ class JevToolRouter:
         self._validate_tools(tools)
         state_text = self._state_text(state)
 
-        # One low/medium-risk tool is deterministic: never pay for Jev in this case.
-        obvious = self._obvious_decision(tools)
-        if obvious is not None:
-            logger.debug("jev_route obvious tool=%s", obvious.tool)
-            return obvious
-
         cache_key = self._cache_key(state_text, tools)
         cached = self._cache_get(cache_key)
         if cached is not None:
@@ -92,18 +86,6 @@ class JevToolRouter:
             (time.perf_counter() - started) * 1000,
         )
         return decision
-
-    def _obvious_decision(self, tools: Sequence[ToolDescriptor]) -> RouteDecision | None:
-        if len(tools) != 1:
-            return None
-        tool = tools[0]
-        if tool.risk.value not in {"low", "medium"}:
-            return None
-        return RouteDecision(
-            tool=tool.name,
-            category=tool.category or infer_category(tool.name, tool.description),
-            confidence=1.0,
-        )
 
     def _obvious_cache_key(
         self, state: HarnessState, tools: Sequence[ToolDescriptor]
