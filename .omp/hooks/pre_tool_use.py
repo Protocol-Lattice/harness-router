@@ -87,63 +87,55 @@ def shortlist(tools: list[dict[str, Any]], current: str, goal: str) -> list[dict
 
 
 class MCPClient:
-    """Line-delimited JSON-RPC with a deadline, including partial-line reads."""
+    """HTTP JSON-RPC client for the persistent Harness Router MCP endpoint."""
 
-    def __init__(self, binary: str, cwd: str, timeout: float) -> None:
+    def __init__(self, endpoint: str, cwd: str, timeout: float) -> None:
+        self.endpoint = endpoint.rstrip("/")
         self.deadline = time.monotonic() + timeout
-        self.proc = subprocess.Popen(
-            [binary],
-            cwd=cwd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            bufsize=1,
-        )
-        self.messages: queue.Queue[str | None] = queue.Queue()
         self.next_id = 0
-        self.reader = threading.Thread(target=self.read, daemon=True)
-        self.reader.start()
 
-    def read(self) -> None:
+    def _post(self, message: dict[str, Any]) -> dict[str, Any]:
+        import urllib.error
+        import urllib.request
+
+        body = json.dumps({"jsonrpc": "2.0", **message}).encode("utf-8")
+        request = urllib.request.Request(
+            self.endpoint,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "MCP-Protocol-Version": "2025-06-18",
+            },
+            method="POST",
+        )
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Harness Router timed out")
         try:
-            assert self.proc.stdout is not None
-            for line in self.proc.stdout:
-                self.messages.put(line)
-        except (OSError, UnicodeError):
-            pass
-        finally:
-            self.messages.put(None)
+            with urllib.request.urlopen(request, timeout=remaining) as response:
+                raw = response.read()
+        except urllib.error.URLError as exc:
+            raise RuntimeError("Harness Router HTTP endpoint unavailable") from exc
+        if not raw:
+            return {}
+        try:
+            value = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise RuntimeError("Invalid Harness Router MCP response") from exc
+        if not isinstance(value, dict):
+            return {}
+        if "error" in value:
+            raise RuntimeError("Harness Router returned an MCP error")
+        return value.get("result") if isinstance(value.get("result"), dict) else {}
 
     def send(self, message: dict[str, Any]) -> None:
-        assert self.proc.stdin is not None
-        self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", **message}) + "\n")
-        self.proc.stdin.flush()
+        self._post(message)
 
     def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         self.next_id += 1
-        self.send({"id": self.next_id, "method": method, "params": params})
-        while True:
-            remaining = self.deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("Harness Router timed out")
-            try:
-                line = self.messages.get(timeout=remaining)
-            except queue.Empty as exc:
-                raise TimeoutError("Harness Router timed out") from exc
-            if line is None:
-                raise RuntimeError("Harness Router closed its output")
-            try:
-                message = json.loads(line)
-            except ValueError:
-                continue
-            if not isinstance(message, dict) or message.get("id") != self.next_id:
-                continue
-            if "error" in message:
-                raise RuntimeError("Harness Router returned an MCP error")
-            result = message.get("result")
-            return result if isinstance(result, dict) else {}
+        result = self._post({"id": self.next_id, "method": method, "params": params})
+        return result
 
     def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         result = self.request("tools/call", {"name": name, "arguments": arguments})
@@ -164,20 +156,7 @@ class MCPClient:
         return {}
 
     def close(self) -> None:
-        if self.proc.poll() is None:
-            self.proc.terminate()
-            try:
-                self.proc.wait(timeout=0.2)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
-                self.proc.wait(timeout=0.2)
-        self.reader.join(timeout=0.2)
-        if self.proc.stdin:
-            self.proc.stdin.close()
-        if self.proc.stdout and not self.reader.is_alive():
-            self.proc.stdout.close()
-
-
+        return
 def env_number(name: str, default: float) -> float:
     value = float(os.environ.get(name, default))
     if not math.isfinite(value):
@@ -196,7 +175,7 @@ def route(
     timeout = env_number("HARNESS_ROUTER_PRETOOL_TIMEOUT", 4.0)
     if timeout <= 0:
         return {}, "route"
-    client = MCPClient(binary, cwd, timeout)
+    client = MCPClient(endpoint, cwd, timeout)
     try:
         client.request(
             "initialize",
@@ -289,8 +268,8 @@ def handle(payload: dict[str, Any]) -> dict[str, Any]:
     goal = str(payload.get("goal") or "Choose the best next ohmypi tool for the current task.")
     goal = goal[:1600]
     candidates = shortlist(tools, current, goal)
-    binary = os.environ.get("HARNESS_ROUTER_MCP_BIN") or shutil.which("harness-router-mcp")
-    if len(candidates) < 2 or not binary:
+    endpoint = os.environ.get("HARNESS_ROUTER_MCP_URL", "http://127.0.0.1:8765/mcp")
+    if len(candidates) < 2:
         return {}
     observation = (
         f"ohmypi is about to call {current!r}. "
