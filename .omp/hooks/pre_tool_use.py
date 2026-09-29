@@ -8,6 +8,7 @@ stdlib-only bridge uses the same shortlisting/MCP/MCTS flow as the Claude hook.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import math
 import os
 import queue
@@ -344,22 +345,50 @@ def handle(payload: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> int:
     started = time.monotonic()
+    started_at = datetime.now(timezone.utc)
     payload: Any = None
+    result: dict[str, Any] = {}
     try:
-        payload = json.load(sys.stdin)
-        result = handle(payload) if isinstance(payload, dict) else {}
-    except (OSError, ValueError, TypeError, RuntimeError, subprocess.SubprocessError):
-        result = {}
-    print(json.dumps(result))
-    log_entry = {
-        "event": "harness_router.hook_timing",
-        "hook": "ohmypi",
-        "duration_ms": round((time.monotonic() - started) * 1000, 3),
-        "tool_name": payload.get("tool_name") if isinstance(payload, dict) else None,
-        "decision": "redirect" if result.get("block") else "allow",
-    }
-    print(json.dumps(log_entry, separators=(",", ":")), file=sys.stderr)
-    return 0
+        try:
+            payload = json.load(sys.stdin)
+            result = handle(payload) if isinstance(payload, dict) else {}
+        except (OSError, ValueError, TypeError, RuntimeError, subprocess.SubprocessError):
+            pass
+        print(json.dumps(result))
+        return 0
+    finally:
+        log_entry = {
+            "event": "harness_router.hook_timing",
+            "hook": "ohmypi",
+            "started_at": started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "duration_ms": round((time.monotonic() - started) * 1000, 3),
+            "tool_name": payload.get("tool_name") if isinstance(payload, dict) else None,
+            "decision": "redirect" if result.get("block") else "allow",
+        }
+        print(json.dumps(log_entry, separators=(",", ":")), file=sys.stderr)
+        _append_hook_timing(log_entry, _repo_root_for_logs())
+
+
+def _repo_root_for_logs() -> Path:
+    cwd = Path.cwd()
+    try:
+        resolved = cwd.resolve()
+        for parent in (resolved, *resolved.parents):
+            if (parent / ".git").exists():
+                return parent
+    except OSError:
+        pass
+    return cwd
+
+
+def _append_hook_timing(event: dict[str, Any], root: Path) -> None:
+    try:
+        path = root / "hook-timings.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(event, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":

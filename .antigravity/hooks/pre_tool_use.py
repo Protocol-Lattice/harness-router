@@ -8,6 +8,7 @@ no permission decision: only a confident alternative can produce a denial.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
 import math
@@ -414,17 +415,28 @@ def _run_hook(argv: list[str] | None = None) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     started = time.monotonic()
+    started_at = datetime.now(timezone.utc)
     try:
         return _run_hook(argv)
     finally:
-        print(
-            json.dumps({
-                "event": "harness_router.hook_timing",
-                "hook": "antigravity",
-                "duration_ms": round((time.monotonic() - started) * 1000, 3),
-            }, separators=(",", ":")),
-            file=sys.stderr,
-        )
+        event = {
+            "event": "harness_router.hook_timing",
+            "hook": "antigravity",
+            "started_at": started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "duration_ms": round((time.monotonic() - started) * 1000, 3),
+        }
+        print(json.dumps(event, separators=(",", ":")), file=sys.stderr)
+        _append_hook_timing(event, PROJECT_ROOT)
+
+
+def _append_hook_timing(event: dict[str, Any], root: Path) -> None:
+    try:
+        path = root / "hook-timings.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(event, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":

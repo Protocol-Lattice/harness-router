@@ -9,6 +9,7 @@ candidate set to the native harness-router MCP server. Failures are deliberately
 from __future__ import annotations
 
 from difflib import SequenceMatcher
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -79,6 +80,18 @@ def _repo_root(cwd: str) -> Path:
     except OSError:
         pass
     return Path(cwd)
+
+
+def _append_hook_timing(event: dict[str, Any]) -> None:
+    try:
+        root = _repo_root(os.getcwd())
+        log_path = root / "hook-timings.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(event, separators=(",", ":")) + "\n")
+    except OSError:
+        # Timing telemetry must never affect the pending tool call.
+        pass
 
 
 def _normalize(raw: Any) -> list[dict[str, Any]]:
@@ -442,7 +455,7 @@ def _route_hybrid(
     return result, "route"
 
 
-def _run_hook() -> int:
+def _run_hook(hook_stats: dict[str, Any] | None = None) -> int:
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
@@ -493,6 +506,11 @@ def _run_hook() -> int:
     )[:MAX_OBSERVATION_CHARS]
 
     binary = _router_binary()
+    decision_started_at = datetime.now(timezone.utc)
+    decision_started = time.monotonic()
+    decision_outcome = "error"
+    routing_mode: str | None = None
+    selected: str | None = None
     try:
         result, routing_mode = _route_hybrid(
             binary=binary,
@@ -502,9 +520,31 @@ def _run_hook() -> int:
             current=current,
             candidates=candidates,
         )
+        selected_value = result.get("tool")
+        selected = selected_value if isinstance(selected_value, str) else None
+        decision_outcome = (
+            "recommendation"
+            if not result.get("fallback") and selected and selected != current
+            else "fallback"
+        )
     except (OSError, subprocess.SubprocessError, TimeoutError, RuntimeError, ValueError):
         _allow()
         return 0
+    finally:
+        if hook_stats is not None:
+            hook_stats.update(
+                {
+                    "decision_started_at": decision_started_at.isoformat(
+                        timespec="milliseconds"
+                    ).replace("+00:00", "Z"),
+                    "decision_duration_ms": round(
+                        (time.monotonic() - decision_started) * 1000, 3
+                    ),
+                    "decision_outcome": decision_outcome,
+                    "routing_mode": routing_mode,
+                    "selected_tool": selected,
+                }
+            )
 
     selected = result.get("tool")
     if (
@@ -534,17 +574,24 @@ def _run_hook() -> int:
 
 def main() -> int:
     started = time.monotonic()
+    started_at = datetime.now(timezone.utc)
+    hook_stats: dict[str, Any] = {
+        "decision_started_at": None,
+        "decision_duration_ms": None,
+        "decision_outcome": "not_invoked",
+    }
     try:
-        return _run_hook()
+        return _run_hook(hook_stats)
     finally:
-        print(
-            json.dumps({
-                "event": "harness_router.hook_timing",
-                "hook": "codex",
-                "duration_ms": round((time.monotonic() - started) * 1000, 3),
-            }, separators=(",", ":")),
-            file=sys.stderr,
-        )
+        event = {
+            "event": "harness_router.hook_timing",
+            "hook": "codex",
+            "started_at": started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "duration_ms": round((time.monotonic() - started) * 1000, 3),
+            **hook_stats,
+        }
+        print(json.dumps(event, separators=(",", ":")), file=sys.stderr)
+        _append_hook_timing(event)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ import sys
 import tempfile
 import threading
 import time
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
@@ -389,19 +390,30 @@ def _run_hook() -> int:
     return 0
 
 
+def _append_hook_timing(event: dict[str, Any], root: Path) -> None:
+    try:
+        path = root / "hook-timings.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(event, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
+
+
 def main() -> int:
     started = time.monotonic()
+    started_at = datetime.now(timezone.utc)
     try:
         return _run_hook()
     finally:
-        print(
-            json.dumps({
-                "event": "harness_router.hook_timing",
-                "hook": "claude",
-                "duration_ms": round((time.monotonic() - started) * 1000, 3),
-            }, separators=(",", ":")),
-            file=sys.stderr,
-        )
+        event = {
+            "event": "harness_router.hook_timing",
+            "hook": "claude",
+            "started_at": started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "duration_ms": round((time.monotonic() - started) * 1000, 3),
+        }
+        print(json.dumps(event, separators=(",", ":")), file=sys.stderr)
+        _append_hook_timing(event, project_root())
 
 
 if __name__ == "__main__":

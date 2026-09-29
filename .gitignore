@@ -70,3 +70,4 @@ htmlcov/
 # Logs / temp files
 *.log
 *.tmp
+hook-timings.jsonl
