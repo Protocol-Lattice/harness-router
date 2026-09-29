@@ -1,6 +1,20 @@
 {
   "description": "Route Codex tool calls through harness-router with a per-session tool registry.",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/pre_decision.py\"",
+            "timeout": 5,
+            "statusMessage": "Precomputing next tool with Harness Router",
+            "additionalContextLimit": 500,
+            "async": true
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "startup",

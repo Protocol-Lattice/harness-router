@@ -155,6 +155,25 @@ def _infer_current_tool(tool_name: str) -> dict[str, Any]:
     }
 
 
+def _load_predecision(root: Path, session_id: str) -> dict[str, Any] | None:
+    path = root / ".codex" / "harness-router" / "sessions" / f"{session_id}.decision.json"
+    try:
+        decision = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(decision, dict):
+        return None
+    try:
+        ttl = float(os.environ.get("HARNESS_ROUTER_PREDECISION_TTL", "30"))
+        generated = datetime.fromisoformat(str(decision.get("generated_at", "")).replace("Z", "+00:00"))
+        age = (datetime.now(timezone.utc) - generated).total_seconds()
+        if age > ttl:
+            return None
+    except (ValueError, TypeError):
+        return None
+    return decision
+
+
 def _persist_session(path: Path, session_id: str, tools: list[dict[str, Any]]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -512,6 +531,60 @@ def _run_hook(hook_stats: dict[str, Any] | None = None) -> int:
         f"Codex is about to call {current!r}. "
         f"tool_input={_compact_tool_input(payload.get('tool_input'))}"
     )[:MAX_OBSERVATION_CHARS]
+
+    # Router-first mode: a UserPromptSubmit hook may have already computed the
+    # next tool before Codex selected a pending tool. Prefer that decision so
+    # PreToolUse does not pay for a second Jev request.
+    predecision = _load_predecision(root, session_id)
+    if predecision:
+        preselected = predecision.get("tool")
+        preconfidence = predecision.get("confidence")
+        enforce = os.environ.get("HARNESS_ROUTER_PREDECISION_ENFORCE", "1") == "1"
+        threshold = float(os.environ.get("HARNESS_ROUTER_PREDECISION_THRESHOLD", "0.85"))
+        if (
+            enforce
+            and isinstance(preselected, str)
+            and preselected
+            and isinstance(preconfidence, (int, float))
+            and float(preconfidence) >= threshold
+            and preselected != current
+        ):
+            if hook_stats is not None:
+                hook_stats.update(
+                    {
+                        "decision_started_at": None,
+                        "decision_duration_ms": 0.0,
+                        "decision_outcome": "predecision_reroute",
+                        "routing_mode": "predecision",
+                        "selected_tool": preselected,
+                    }
+                )
+            _deny(
+                selected=preselected,
+                current=current,
+                confidence=float(preconfidence),
+                tool_count=len(candidates),
+                routing_mode="predecision",
+            )
+            return 0
+
+        if (
+            isinstance(preselected, str)
+            and preselected
+            and preselected == current
+        ):
+            if hook_stats is not None:
+                hook_stats.update(
+                    {
+                        "decision_started_at": None,
+                        "decision_duration_ms": 0.0,
+                        "decision_outcome": "predecision_hit",
+                        "routing_mode": "predecision",
+                        "selected_tool": current,
+                    }
+                )
+            _allow()
+            return 0
 
     binary = _router_binary()
     decision_started_at = datetime.now(timezone.utc)

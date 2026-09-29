@@ -2086,7 +2086,58 @@ codex mcp list</code>
           <a class="btn" href="#install">Install MCP</a>
         </div>
       </section>
-    </main>
+    
+<section id="architecture" aria-labelledby="architecture-title">
+  <style>
+    #architecture{padding:72px 0}
+    #architecture .arch-lead{max-width:760px;margin:0 auto 32px;text-align:center;opacity:.78}
+    #architecture .arch-diagram{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;align-items:stretch;max-width:1100px;margin:0 auto 28px}
+    #architecture .arch-harness,#architecture .arch-router,#architecture .arch-step{border:1px solid currentColor;border-radius:14px;padding:18px;text-align:center;background:rgba(255,255,255,.03)}
+    #architecture .arch-harness{font-weight:700}
+    #architecture .arch-harness small{display:block;margin-top:7px;font-weight:400;opacity:.65}
+    #architecture .arch-flow{max-width:1100px;margin:auto;display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center}
+    #architecture .arch-arrow{text-align:center;font-size:20px;opacity:.55}
+    #architecture .arch-router{border-width:2px}
+    #architecture .arch-router strong{display:block;font-size:1.05rem;margin-bottom:6px}
+    #architecture .arch-router span{font-size:.85rem;opacity:.7}
+    #architecture .arch-note{max-width:900px;margin:28px auto 0;text-align:center;font-size:.9rem;opacity:.65}
+    @media(max-width:760px){
+      #architecture .arch-diagram{grid-template-columns:1fr 1fr}
+      #architecture .arch-flow{grid-template-columns:1fr;gap:8px}
+      #architecture .arch-arrow{transform:rotate(90deg)}
+    }
+  </style>
+  <h2 id="architecture-title">Architecture</h2>
+  <p class="arch-lead">One router-first decision layer across the major agent harnesses. The adapters normalize each harness event into the same routing core.</p>
+
+  <div class="arch-diagram">
+    <div class="arch-harness">Codex<small>UserPromptSubmit → PreToolUse</small></div>
+    <div class="arch-harness">Claude<small>UserPromptSubmit → PreToolUse</small></div>
+    <div class="arch-harness">DeepSeek<small>PreToolUse / pre-execute</small></div>
+    <div class="arch-harness">Antigravity<small>PreInvocation → PreToolUse</small></div>
+    <div class="arch-harness">OhMyPi<small>turn/context → tool_call</small></div>
+  </div>
+
+  <div class="arch-flow">
+    <div class="arch-step"><strong>Harness adapter</strong><br><span>normalize turn, goal &amp; tools</span></div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-router"><strong>Harness Router</strong><span>deterministic fast path · cache · Jev · MCTS</span></div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-step"><strong>Decision cache</strong><br><span>reuse before tool execution</span></div>
+  </div>
+
+  <div class="arch-flow" style="margin-top:14px">
+    <div class="arch-step"><strong>Model / harness</strong><br><span>selects the tool</span></div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-step"><strong>PreToolUse</strong><br><span>match → allow · mismatch → re-plan</span></div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-step"><strong>Tool execution</strong><br><span>normal permissions still apply</span></div>
+  </div>
+
+  <p class="arch-note">Pre-decision work can overlap with model reasoning when the harness supports an asynchronous pre-turn hook. If no pre-decision is available, the existing PreToolUse path remains the fallback.</p>
+</section>
+
+</main>
 
     <footer>
       <span>Protocol Lattice · harness-router · MIT</span>
