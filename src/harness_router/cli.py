@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Mapping, Sequence
 
@@ -112,6 +113,8 @@ async def _run_route(args: argparse.Namespace) -> int:
         "confidence": round(decision.confidence, 4),
         "fallback": decision.fallback,
         "fallback_reason": decision.fallback_reason,
+        "provider": "openrouter",
+        "provider_requests": provider.requests_made,
     }
     if args.verbose:
         payload["probabilities"] = dict(decision.probabilities)
@@ -123,8 +126,10 @@ async def _run_route(args: argparse.Namespace) -> int:
             separators=(",", ":"),
             sort_keys=True,
         )
+    # A hook must be able to distinguish a real provider request from an early
+    # router fallback. Keep the JSON result machine-readable and fail closed here.
     print(output)
-    return 0
+    return 0 if provider.requests_made > 0 else 2
 
 
 async def _amain(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
