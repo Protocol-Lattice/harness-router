@@ -372,7 +372,11 @@ def _route_via_daemon(
         "direct_threshold": 0.85,
         "fallback_threshold": 0.60,
         "hierarchical_threshold": 24,
-        "route_cache_size": 0,
+        # Keep routing state in the long-lived daemon so every PreToolUse
+        # process can reuse high-confidence decisions from earlier calls.
+        "route_cache_size": int(os.environ.get("HARNESS_ROUTER_PRETOOL_ROUTE_CACHE_SIZE", "256")),
+        "obvious_cache_size": int(os.environ.get("HARNESS_ROUTER_PRETOOL_OBVIOUS_CACHE_SIZE", "512")),
+        "obvious_cache_ttl_seconds": float(os.environ.get("HARNESS_ROUTER_PRETOOL_OBVIOUS_CACHE_TTL", "300")),
     }
     wire = (json.dumps(request, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
 
@@ -393,7 +397,11 @@ def _route_via_daemon(
     except (OSError, ValueError, json.JSONDecodeError):
         return None
 
-    if not isinstance(result, dict) or result.get("provider_requests", 0) < 1:
+    if not isinstance(result, dict):
+        return None
+    # provider_requests == 0 is a successful daemon-side cache hit, not a
+    # routing failure. The hook must accept and propagate that decision.
+    if not result.get("daemon"):
         return None
     return result
 
@@ -522,11 +530,14 @@ def _run_hook(hook_stats: dict[str, Any] | None = None) -> int:
         )
         selected_value = result.get("tool")
         selected = selected_value if isinstance(selected_value, str) else None
-        decision_outcome = (
-            "recommendation"
-            if not result.get("fallback") and selected and selected != current
-            else "fallback"
-        )
+        if result.get("provider_requests", 0) == 0 and result.get("tool"):
+            decision_outcome = "cache_hit"
+        else:
+            decision_outcome = (
+                "recommendation"
+                if not result.get("fallback") and selected and selected != current
+                else "fallback"
+            )
     except (OSError, subprocess.SubprocessError, TimeoutError, RuntimeError, ValueError):
         _allow()
         return 0

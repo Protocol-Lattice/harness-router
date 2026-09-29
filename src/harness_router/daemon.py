@@ -115,6 +115,8 @@ async def _handle(
                     fallback_threshold=float(key[2]),
                     hierarchical_threshold=int(key[3]),
                     route_cache_size=int(key[4]),
+                    obvious_cache_size=int(key[5]),
+                    obvious_cache_ttl_seconds=float(key[6]),
                 ),
             )
             routers[key] = router
