@@ -15,6 +15,11 @@ _REDACTED = "[REDACTED]"
 
 
 class DecisionProvider(Protocol):
+    @property
+    def requests_made(self) -> int:
+        """Number of OpenRouter HTTP requests attempted by this provider instance."""
+        return self._requests_made
+
     async def choose(
         self,
         *,
@@ -40,6 +45,7 @@ class OpenRouterJevProvider:
             raise ValueError("api_key must not be empty")
         self._api_key = api_key
         self._model = model
+        self._requests_made = 0
         self._base_url = base_url
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(
@@ -100,6 +106,8 @@ class OpenRouterJevProvider:
         self._assert_api_key_not_in_payload(payload)
 
         try:
+            # Count immediately before the network request so failures/timeouts are visible.
+            self._requests_made += 1
             response = await self._client.post(
                 self._base_url,
                 headers={
