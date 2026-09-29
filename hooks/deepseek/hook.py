@@ -227,12 +227,27 @@ def main() -> int:
         allow()
         return 0
 
+    goal = str(payload.get("goal") or "Choose the best next DeepSeek tool for the current task.")[:1600]
+    observation = (
+        f"DeepSeek is about to call {current!r}. "
+        f"tool_input={json.dumps(payload.get("tool_input"), ensure_ascii=False)[:600]}"
+    )[:900]
+    import time
+    started = time.monotonic()
     try:
-        result = route(binary=binary, cwd=cwd, current=current, candidates=candidates)
+        result, mode = route(
+            binary=binary,
+            cwd=cwd,
+            goal=goal,
+            observation=observation,
+            current=current,
+            candidates=candidates,
+        )
     except (OSError, ValueError, RuntimeError, TimeoutError, subprocess.SubprocessError):
         allow()
         return 0
 
+    elapsed_ms = (time.monotonic() - started) * 1000
     selected = result.get("tool")
     if result.get("fallback") or not isinstance(selected, str) or not selected or selected == current:
         allow()
@@ -240,7 +255,19 @@ def main() -> int:
 
     raw_confidence = result.get("confidence")
     confidence = float(raw_confidence) if isinstance(raw_confidence, (int, float)) else None
-    deny(selected, current, confidence, len(candidates))
+    emit({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                f"harness-router ({mode}) selected {selected!r} instead of {current!r}"
+            ),
+            "additionalContext": (
+                f"Harness Router evaluated {len(candidates)} similar tools; "
+                f"decision latency: {elapsed_ms:.2f} ms."
+            ),
+        }
+    })
     return 0
 
 
