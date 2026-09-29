@@ -103,6 +103,7 @@ async def _handle(
             float(request.get("direct_threshold", 0.85)),
             float(request.get("fallback_threshold", 0.60)),
             int(request.get("hierarchical_threshold", 24)),
+            int(request.get("route_cache_size", 128)),
         )
         router = routers.get(key)
         if router is None:
@@ -113,6 +114,7 @@ async def _handle(
                     direct_execution_threshold=float(key[1]),
                     fallback_threshold=float(key[2]),
                     hierarchical_threshold=int(key[3]),
+                    route_cache_size=int(key[4]),
                 ),
             )
             routers[key] = router
