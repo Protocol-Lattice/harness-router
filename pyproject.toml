@@ -25,7 +25,7 @@ classifiers = [
 [project.scripts]
 harness-router = "harness_router.cli:main"
 har = "harness_router.cli:main"
-harness-router-mcp = "harness_router.mcp_cli:main"
+harness-router-mcp = "harness_router.mcp_http:main"
 
 [project.optional-dependencies]
 mcp = [
