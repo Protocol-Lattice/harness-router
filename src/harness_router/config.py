@@ -21,6 +21,8 @@ class RoutingConfig:
     state_field_limit: int = 512
     constraint_limit: int = 2
     route_cache_size: int = 128
+    obvious_cache_size: int = 256
+    obvious_cache_ttl_seconds: float = 60.0
     adaptive_hierarchy: bool = True
     hierarchical_min_savings_ratio: float = 0.15
 
@@ -51,6 +53,10 @@ class RoutingConfig:
             raise RouterConfigurationError("constraint_limit must be >= 0")
         if self.route_cache_size < 0:
             raise RouterConfigurationError("route_cache_size must be >= 0")
+        if self.obvious_cache_size < 0:
+            raise RouterConfigurationError("obvious_cache_size must be >= 0")
+        if self.obvious_cache_ttl_seconds <= 0:
+            raise RouterConfigurationError("obvious_cache_ttl_seconds must be > 0")
         if not 0.0 <= self.hierarchical_min_savings_ratio < 1.0:
             raise RouterConfigurationError(
                 "hierarchical_min_savings_ratio must be >= 0 and < 1"
