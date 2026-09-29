@@ -91,6 +91,7 @@ def _request_payload(args: argparse.Namespace) -> dict[str, Any]:
         "fallback_threshold": args.fallback_threshold,
         "hierarchical_threshold": args.hierarchical_threshold,
         "route_cache_size": 0 if args.no_cache else 128,
+        "obvious_cache_size": 0 if args.no_cache else 256,
     }
 
 
@@ -107,6 +108,7 @@ async def _run_direct(request: Mapping[str, Any]) -> tuple[dict[str, object], in
             fallback_threshold=float(request["fallback_threshold"]),
             hierarchical_threshold=int(request["hierarchical_threshold"]),
             route_cache_size=int(request.get("route_cache_size", 128)),
+            obvious_cache_size=int(request.get("obvious_cache_size", 256)),
         ),
     )
 
