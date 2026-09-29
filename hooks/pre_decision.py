@@ -69,20 +69,32 @@ def main() -> int:
                 raw=json.loads(Path(catalog).read_text(encoding="utf-8"))
                 tools=raw.get("tools",raw) if isinstance(raw,dict) else raw
             except (OSError,ValueError): tools=[]
+    if not isinstance(tools, list):
+        harness = str(payload.get("harness") or os.environ.get("HARNESS_ROUTER_HARNESS") or "").lower()
+        if harness:
+            candidate = Path(str(payload.get("cwd") or os.getcwd())) / f".{harness}" / "harness-router-tools.json"
+            try:
+                raw=json.loads(candidate.read_text(encoding="utf-8"))
+                tools=raw.get("tools",raw) if isinstance(raw,dict) else raw
+            except (OSError,ValueError):
+                tools=[]
     if not goal or not isinstance(tools,list) or len(tools)<2: return 0
     cwd=str(payload.get("cwd") or os.getcwd())
     session=str(payload.get("session_id") or "default")
+    started=time.monotonic()
     result=route(goal,tools,cwd,float(os.environ.get("HARNESS_ROUTER_PREDECISION_TIMEOUT","4")))
+    duration_ms=round((time.monotonic()-started)*1000,3)
     selected=result.get("tool"); confidence=result.get("confidence")
-    if result.get("fallback") or not isinstance(selected,str) or not selected: return 0
+    if result.get("fallback") or not isinstance(selected,str) or not selected:
+        return 0
     try: confidence=float(confidence)
     except (TypeError,ValueError): return 0
     r=root(cwd); path=r/".harness-router"/"sessions"/f"{session}.decision.json"
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps({"generated_at":datetime.now(timezone.utc).isoformat(),
                                 "harness":payload.get("harness"),"goal":goal,
-                                "tool":selected,"confidence":confidence},separators=(",",":")),encoding="utf-8")
-    print(json.dumps({"tool":selected,"confidence":confidence,"duration_ms":0},separators=(",",":")))
+                                "tool":selected,"confidence":confidence,"duration_ms":duration_ms},separators=(",",":")),encoding="utf-8")
+    print(json.dumps({"tool":selected,"confidence":confidence,"duration_ms":duration_ms},separators=(",",":")))
     return 0
 
 if __name__=="__main__": raise SystemExit(main())
