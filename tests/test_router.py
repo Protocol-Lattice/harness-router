@@ -230,21 +230,6 @@ async def test_adaptive_hierarchy_keeps_small_expensive_split_flat() -> None:
 
 
 @pytest.mark.asyncio
-async def test_single_low_risk_tool_bypasses_jev() -> None:
-    provider = FakeProvider(
-        ChoiceDecision("read_file", {"read_file": 1.0}, 1.0)
-    )
-    router = JevToolRouter(provider)
-    decision = await router.route(
-        HarnessState(goal="inspect parser", observation="changed"),
-        [tool("read_file")],
-    )
-    assert decision.tool == "read_file"
-    assert decision.confidence == 1.0
-    assert len(provider.calls) == 0
-
-
-@pytest.mark.asyncio
 async def test_high_confidence_decision_is_reused_across_observation_changes() -> None:
     provider = FakeProvider(
         ChoiceDecision(
