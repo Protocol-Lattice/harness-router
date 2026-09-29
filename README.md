@@ -114,6 +114,21 @@ These are **shared router-core measurements**, not five separate end-to-end hook
 
 See [`benchmark-results/decision-latency-2026-09-26.md`](benchmark-results/decision-latency-2026-09-26.md) and [`benchmark-results/mcts-4096-decision-latency-2026-09-26.md`](benchmark-results/mcts-4096-decision-latency-2026-09-26.md).
 
+### Persistent router daemon
+
+The Codex, Claude Code, ohmypi, Antigravity, and DeepSeek Harness hooks share one local daemon on macOS and Linux. You normally do not need to start it yourself: launch the harness as usual, and the first routed tool call starts the daemon through the `harness-router route` CLI fallback. Later hook calls connect directly to the daemon's Unix socket, avoiding a new router CLI process for each decision. The daemon inherits the environment of the process that starts it, so make sure `OPENROUTER_API_KEY` is available before the first routed call.
+
+To start it manually from a Harness Router checkout, run this from the repository root, then launch the harness in another terminal:
+
+```bash
+export OPENROUTER_API_KEY="your-key"
+uv run python -m harness_router.daemon
+```
+
+`python -m harness_router.daemon` works when Harness Router is installed in that exact Python environment. A system Python that only has the repository checkout on disk cannot import the `src/harness_router` package by itself.
+
+The command stays in the foreground while the daemon runs. The default socket is `/tmp/harness-router-<uid>.sock`; set `HARNESS_ROUTER_SOCKET` in both the daemon and harness environments to use a different path. Set `HARNESS_ROUTER_NO_DAEMON=1` to make hooks and the CLI bypass the daemon. Windows uses the direct CLI path because Unix domain sockets are unavailable there.
+
 ### 2. Skill — route only when useful
 
 Use the included Harness Router skill when you want routing to stay explicit and selective.

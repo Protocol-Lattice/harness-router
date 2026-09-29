@@ -14,8 +14,10 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 from typing import Any
 
 
@@ -66,17 +68,14 @@ def _deny(
 
 
 def _repo_root(cwd: str) -> Path:
+    current = Path(cwd)
     try:
-        p = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=1.0,
-        )
-        if p.stdout.strip():
-            return Path(p.stdout.strip())
-    except (OSError, subprocess.SubprocessError):
+        current = current.resolve()
+        for parent in (current, *current.parents):
+            # Git worktrees use a .git file, so exists() covers both layouts.
+            if (parent / ".git").exists():
+                return parent
+    except OSError:
         pass
     return Path(cwd)
 
@@ -330,8 +329,63 @@ def _router_binary() -> str | None:
     return os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("harness-router")
 
 
+def _route_via_daemon(
+    goal: str,
+    observation: str,
+    candidates: list[dict[str, Any]],
+    timeout: float,
+) -> dict[str, Any] | None:
+    """Use the already-running daemon without starting a second Python process."""
+    if os.name == "nt" or os.environ.get("HARNESS_ROUTER_NO_DAEMON") == "1":
+        return None
+
+    configured = os.environ.get("HARNESS_ROUTER_SOCKET")
+    if configured:
+        path = configured
+    else:
+        uid = str(os.getuid()) if hasattr(os, "getuid") else str(os.getpid())
+        path = str(Path(tempfile.gettempdir()) / f"harness-router-{uid}.sock")
+
+    request = {
+        "goal": goal,
+        "observation": observation,
+        "last_action": None,
+        "tools": [
+            {key: tool.get(key) for key in ("name", "description", "category", "risk")}
+            for tool in candidates
+        ],
+        "mode": "jev_only",
+        "direct_threshold": 0.85,
+        "fallback_threshold": 0.60,
+        "hierarchical_threshold": 24,
+        "route_cache_size": 0,
+    }
+    wire = (json.dumps(request, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(timeout)
+            client.connect(path)
+            client.sendall(wire)
+            response = bytearray()
+            while len(response) <= 64 * 1024:
+                chunk = client.recv(4096)
+                if not chunk:
+                    break
+                response.extend(chunk)
+                if b"\n" in chunk:
+                    break
+        result = json.loads(response.split(b"\n", 1)[0])
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(result, dict) or result.get("provider_requests", 0) < 1:
+        return None
+    return result
+
+
 def _route_hybrid(
-    binary: str,
+    binary: str | None,
     cwd: str | Path,
     goal: str,
     observation: str,
@@ -341,6 +395,12 @@ def _route_hybrid(
     timeout = float(os.environ.get("HARNESS_ROUTER_PRETOOL_TIMEOUT", "4.0"))
     if timeout <= 0:
         return {}, "route"
+    daemon_result = _route_via_daemon(goal, observation, candidates, timeout)
+    if daemon_result is not None:
+        return daemon_result, "route"
+    if not binary:
+        return {}, "route"
+
     tools_json = json.dumps(
         [
             {key: tool.get(key) for key in ("name", "description", "category", "risk")}
@@ -432,10 +492,6 @@ def main() -> int:
     )[:MAX_OBSERVATION_CHARS]
 
     binary = _router_binary()
-    if not binary:
-        _allow()
-        return 0
-
     try:
         result, routing_mode = _route_hybrid(
             binary=binary,

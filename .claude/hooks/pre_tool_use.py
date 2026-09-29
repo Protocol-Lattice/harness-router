@@ -15,8 +15,10 @@ import queue
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from difflib import SequenceMatcher
@@ -211,8 +213,59 @@ def env_number(name: str, default: float) -> float:
     return value
 
 
+def _route_via_daemon(
+    goal: str,
+    observation: str,
+    candidates: list[dict[str, Any]],
+    timeout: float,
+) -> dict[str, Any] | None:
+    """Use an existing local router daemon before starting the CLI subprocess."""
+    if os.name == "nt" or os.environ.get("HARNESS_ROUTER_NO_DAEMON") == "1":
+        return None
+    configured = os.environ.get("HARNESS_ROUTER_SOCKET")
+    if configured:
+        path = configured
+    else:
+        uid = str(os.getuid()) if hasattr(os, "getuid") else str(os.getpid())
+        path = str(Path(tempfile.gettempdir()) / f"harness-router-{uid}.sock")
+    request = {
+        "goal": goal,
+        "observation": observation,
+        "last_action": None,
+        "tools": [
+            {key: tool.get(key) for key in ("name", "description", "category", "risk")}
+            for tool in candidates
+        ],
+        "mode": "jev_only",
+        "direct_threshold": 0.85,
+        "fallback_threshold": 0.60,
+        "hierarchical_threshold": 24,
+        "route_cache_size": 0,
+    }
+    wire = (json.dumps(request, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(timeout)
+            client.connect(path)
+            client.sendall(wire)
+            response = bytearray()
+            while len(response) <= 64 * 1024:
+                chunk = client.recv(4096)
+                if not chunk:
+                    break
+                response.extend(chunk)
+                if b"\n" in chunk:
+                    break
+        result = json.loads(response.split(b"\n", 1)[0])
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(result, dict) or result.get("provider_requests", 0) < 1:
+        return None
+    return result
+
+
 def route(
-    binary: str,
+    binary: str | None,
     cwd: str | Path,
     goal: str,
     observation: str,
@@ -221,6 +274,11 @@ def route(
 ) -> tuple[dict[str, Any], str]:
     timeout = float(os.environ.get("HARNESS_ROUTER_PRETOOL_TIMEOUT", "4.0"))
     if timeout <= 0:
+        return {}, "route"
+    daemon_result = _route_via_daemon(goal, observation, candidates, timeout)
+    if daemon_result is not None:
+        return daemon_result, "route"
+    if not binary:
         return {}, "route"
     tools_json = json.dumps(
         [
@@ -280,7 +338,7 @@ def handle(payload: dict[str, Any]) -> None:
     marker = redirect_marker(root, payload, str(payload.get("prompt_id") or prompt_uuid or goal))
     candidates = shortlist(tools, current, goal)
     binary = os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("harness-router")
-    if len(candidates) < 2 or not binary or marker.exists():
+    if len(candidates) < 2 or marker.exists():
         emit()
         return
     observation = (
