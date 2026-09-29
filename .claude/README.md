@@ -174,7 +174,7 @@ the hook does not guess MCP definitions from their first invocation.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `HARNESS_ROUTER_MCP_BIN` | `harness-router-mcp` on `PATH` | Router executable path |
+| `HARNESS_ROUTER_MCP_URL` | `http://127.0.0.1:8765/mcp` | Persistent MCP HTTP endpoint |
 | `HARNESS_ROUTER_CLAUDE_BIN` | `claude` on `PATH` | Claude executable for metadata discovery |
 | `HARNESS_ROUTER_CLAUDE_DISCOVERY` | `1` | Set to `0` to use only imported descriptors |
 | `HARNESS_ROUTER_DISCOVERY_TIMEOUT` | `8` | Startup discovery deadline, seconds |
