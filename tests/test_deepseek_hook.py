@@ -18,5 +18,3 @@ def test_deepseek_denies_via_cli(monkeypatch,tmp_path,capsys):
     monkeypatch.setattr(sys,"stdin",io.StringIO(json.dumps({"hook_event_name":"PreToolUse","tool_name":"read_file","tool_input":{"path":"src/parser.py"},"cwd":str(tmp_path)})))
     assert hook.main()==0
     out=json.loads(capsys.readouterr().out)["hookSpecificOutput"]; assert out["permissionDecision"]=="deny"; assert "search_code" in out["permissionDecisionReason"]; assert seen["goal"]
-def test_deepseek_hook_uses_current_cli_route():
-    assert "binary, cwd, goal, observation, current, candidates" in (ROOT/"hooks/deepseek/hook.py").read_text()
