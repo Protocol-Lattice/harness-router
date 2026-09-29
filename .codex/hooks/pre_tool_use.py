@@ -222,6 +222,20 @@ def _compact_tool_input(value: Any) -> str:
     return text[:600]
 
 
+def _tool_key(value: str) -> str:
+    """Compare MCP tool names independent of dash/underscore spelling."""
+    return re.sub(r"[-_]+", "_", value.strip().lower())
+
+
+def _align_tool_name(name: str, runtime_name: str) -> str:
+    """Use the naming convention exposed by the current runtime tool."""
+    if "-" in runtime_name and "_" not in runtime_name:
+        return name.replace("_", "-")
+    if "_" in runtime_name and "-" not in runtime_name:
+        return name.replace("-", "_")
+    return name
+
+
 def _tokens(value: str) -> set[str]:
     value = re.sub(r"([a-z0-9])([A-Z])", r"\\1 \\2", value)
     return {
@@ -271,11 +285,13 @@ def _similar_tools(
     goal: str,
 ) -> list[dict[str, Any]]:
     current_tool = next(
-        (tool for tool in tools if tool.get("name") == current),
+        (tool for tool in tools if _tool_key(str(tool.get("name", ""))) == _tool_key(current)),
         None,
     )
     if current_tool is None:
         return []
+    current_tool = dict(current_tool)
+    current_tool["name"] = current
 
     try:
         max_candidates = max(
@@ -298,9 +314,11 @@ def _similar_tools(
             "route" in lowered or "mcts" in lowered
         ):
             continue
-        if name == current:
+        if _tool_key(name) == _tool_key(current):
             continue
-        scored.append((_tool_similarity(tool, current_tool, goal), tool))
+        aligned = dict(tool)
+        aligned["name"] = _align_tool_name(name, current)
+        scored.append((_tool_similarity(aligned, current_tool, goal), aligned))
 
     scored.sort(key=lambda item: item[0], reverse=True)
     return [current_tool] + [
@@ -386,7 +404,7 @@ def main() -> int:
 
     # The catalog is immutable for the session. Discovery happens once at
     # SessionStart; PreToolUse must not learn tools or invent descriptions.
-    if not any(tool.get("name") == current for tool in tools):
+    if not any(_tool_key(str(tool.get("name", ""))) == _tool_key(current) for tool in tools):
         _allow()
         return 0
 
@@ -413,13 +431,6 @@ def main() -> int:
         _allow()
         return 0
 
-    timeout = float(
-        os.environ.get(
-            "HARNESS_ROUTER_PRETOOL_TIMEOUT",
-            DEFAULT_TIMEOUT_SECONDS,
-        )
-    )
-
     try:
         result, routing_mode = _route_hybrid(
             binary=binary,
@@ -428,7 +439,6 @@ def main() -> int:
             observation=observation,
             current=current,
             candidates=candidates,
-            timeout=timeout,
         )
     except (OSError, subprocess.SubprocessError, TimeoutError, RuntimeError, ValueError):
         _allow()
