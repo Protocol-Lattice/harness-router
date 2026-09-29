@@ -24,6 +24,8 @@ from typing import Any
 
 
 APP_SERVER_TIMEOUT = float(os.environ.get("HARNESS_ROUTER_DISCOVERY_TIMEOUT", "8"))
+BACKGROUND_ENV = "HARNESS_ROUTER_DISCOVERY_BACKGROUND"
+
 
 CORE_TOOLS: list[dict[str, Any]] = [
     {
@@ -313,18 +315,43 @@ def main() -> int:
         except json.JSONDecodeError:
             pass
 
-    try:
-        mcp_tools = _discover_mcp_tools(cwd)
-    except Exception as exc:
-        mcp_tools = []
-        print(f"Harness Router MCP discovery failed: {exc}", file=sys.stderr)
-
-    tools = _merge(CORE_TOOLS, mcp_tools, extra_tools)
-
     generated_catalog = root / ".codex" / "harness-router-tools.json"
     session_catalog = (
         root / ".codex" / "harness-router" / "sessions" / f"{session_id}.json"
     )
+
+    # SessionStart is on the critical path. Never block the harness on MCP
+    # discovery: seed a usable catalog immediately and refresh it in a detached
+    # worker. This keeps the hook well below Codex's hook timeout.
+    if os.environ.get(BACKGROUND_ENV) != "1":
+        seed_tools = _merge(CORE_TOOLS, extra_tools)
+        _write_catalog(generated_catalog, session_id, seed_tools)
+        _write_catalog(session_catalog, session_id, seed_tools)
+
+        try:
+            env = os.environ.copy()
+            env[BACKGROUND_ENV] = "1"
+            subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve())],
+                cwd=cwd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+                start_new_session=True,
+            )
+        except OSError:
+            pass
+
+        _emit_session_start(len(seed_tools))
+        return 0
+
+    try:
+        mcp_tools = _discover_mcp_tools(cwd)
+    except Exception:
+        mcp_tools = []
+
+    tools = _merge(CORE_TOOLS, mcp_tools, extra_tools)
     _write_catalog(generated_catalog, session_id, tools)
     _write_catalog(session_catalog, session_id, tools)
 
