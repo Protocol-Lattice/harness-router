@@ -18,6 +18,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Any
 
 
@@ -441,7 +442,7 @@ def _route_hybrid(
     return result, "route"
 
 
-def main() -> int:
+def _run_hook() -> int:
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
@@ -529,6 +530,21 @@ def main() -> int:
         routing_mode=routing_mode,
     )
     return 0
+
+
+def main() -> int:
+    started = time.monotonic()
+    try:
+        return _run_hook()
+    finally:
+        print(
+            json.dumps({
+                "event": "harness_router.hook_timing",
+                "hook": "codex",
+                "duration_ms": round((time.monotonic() - started) * 1000, 3),
+            }, separators=(",", ":")),
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

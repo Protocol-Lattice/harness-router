@@ -112,6 +112,8 @@ All five hook integrations use the same `harness-router-mcp` routing core, so th
 
 These are **shared router-core measurements**, not five separate end-to-end hook benchmarks. Hook startup, catalog discovery, process spawning, harness scheduling, and provider/network conditions can add overhead that varies by harness. The benchmark timing includes MCP/provider overhead for the router call but not the surrounding hook wrapper.
 
+At runtime, every hook adapter writes one JSON timing record per invocation to `stderr` (`event: harness_router.hook_timing`, with `hook` and `duration_ms`). This measures the full adapter call, including input parsing, local preparation, routing, and writing the hook response. The hook protocol on `stdout` is unchanged. Capture each harness's `stderr` as JSON Lines to calculate observed per-hook mean, median, and p95 latency; these runtime measurements include the wrapper overhead omitted by the shared router-core benchmark above.
+
 See [`benchmark-results/decision-latency-2026-09-26.md`](benchmark-results/decision-latency-2026-09-26.md) and [`benchmark-results/mcts-4096-decision-latency-2026-09-26.md`](benchmark-results/mcts-4096-decision-latency-2026-09-26.md).
 
 ### Persistent router daemon

@@ -343,12 +343,22 @@ def handle(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    started = time.monotonic()
+    payload: Any = None
     try:
         payload = json.load(sys.stdin)
         result = handle(payload) if isinstance(payload, dict) else {}
     except (OSError, ValueError, TypeError, RuntimeError, subprocess.SubprocessError):
         result = {}
     print(json.dumps(result))
+    log_entry = {
+        "event": "harness_router.hook_timing",
+        "hook": "ohmypi",
+        "duration_ms": round((time.monotonic() - started) * 1000, 3),
+        "tool_name": payload.get("tool_name") if isinstance(payload, dict) else None,
+        "decision": "redirect" if result.get("block") else "allow",
+    }
+    print(json.dumps(log_entry, separators=(",", ":")), file=sys.stderr)
     return 0
 
 

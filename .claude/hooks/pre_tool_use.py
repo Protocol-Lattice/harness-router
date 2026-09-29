@@ -377,7 +377,7 @@ def handle(payload: dict[str, Any]) -> None:
     emit(permissionDecision="deny", permissionDecisionReason=reason, additionalContext=reason)
 
 
-def main() -> int:
+def _run_hook() -> int:
     try:
         payload = json.load(sys.stdin)
         if isinstance(payload, dict):
@@ -387,6 +387,21 @@ def main() -> int:
     except (OSError, ValueError, TypeError, RuntimeError, subprocess.SubprocessError):
         emit()
     return 0
+
+
+def main() -> int:
+    started = time.monotonic()
+    try:
+        return _run_hook()
+    finally:
+        print(
+            json.dumps({
+                "event": "harness_router.hook_timing",
+                "hook": "claude",
+                "duration_ms": round((time.monotonic() - started) * 1000, 3),
+            }, separators=(",", ":")),
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

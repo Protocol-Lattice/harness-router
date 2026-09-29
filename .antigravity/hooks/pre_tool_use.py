@@ -398,7 +398,7 @@ def handle(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def _run_hook(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stop", action="store_true", help="reset when Antigravity becomes idle")
     args = parser.parse_args(argv)
@@ -410,6 +410,21 @@ def main(argv: list[str] | None = None) -> int:
         result = {}
     print(json.dumps(result))
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    started = time.monotonic()
+    try:
+        return _run_hook(argv)
+    finally:
+        print(
+            json.dumps({
+                "event": "harness_router.hook_timing",
+                "hook": "antigravity",
+                "duration_ms": round((time.monotonic() - started) * 1000, 3),
+            }, separators=(",", ":")),
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":
