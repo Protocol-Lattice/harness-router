@@ -195,7 +195,7 @@ async def test_route_cache_can_be_disabled() -> None:
         ChoiceDecision("read_file", {"read_file": 0.97, "__fallback__": 0.03}, 0.97),
         ChoiceDecision("read_file", {"read_file": 0.97, "__fallback__": 0.03}, 0.97),
     )
-    router = JevToolRouter(provider, RoutingConfig(route_cache_size=0))
+    router = JevToolRouter(provider, RoutingConfig(route_cache_size=0, obvious_cache_size=0))
     state = HarnessState(goal="inspect parser")
     tools = [tool("read_file")]
 
