@@ -243,6 +243,43 @@ def route(
     return (result if isinstance(result, dict) else {}), "route"
 
 
+def load_tools(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_json = os.environ.get("HARNESS_ROUTER_ANTIGRAVITY_TOOLS_JSON", "").strip()
+    if raw_json:
+        try:
+            return normalize_tools(json.loads(raw_json))
+        except json.JSONDecodeError:
+            return []
+    conversation = payload.get("conversationId")
+    if not isinstance(conversation, str) or not conversation.strip():
+        return []
+    snapshot = PROJECT_ROOT / ".antigravity/harness-router-tools.json"
+    try:
+        data = json.loads(snapshot.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return normalize_tools(data)
+
+
+def redirect_marker(payload: dict[str, Any]) -> Path:
+    conversation = str(payload.get("conversationId") or "default")
+    digest = hashlib.sha256(conversation.encode("utf-8")).hexdigest()
+    return PROJECT_ROOT / ".antigravity/harness-router/sessions" / f"{digest}.redirected"
+
+
+def stop(payload: dict[str, Any]) -> dict[str, Any]:
+    if payload.get("fullyIdle") is not True:
+        return {}
+    marker = redirect_marker(payload)
+    try:
+        marker.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        return {}
+    return {}
+
+
 def handle(payload: dict[str, Any]) -> dict[str, Any]:
     call = payload.get("toolCall")
     if not isinstance(call, dict) or not isinstance(call.get("args"), dict):
