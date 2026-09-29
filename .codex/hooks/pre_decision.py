@@ -19,7 +19,9 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 import time
@@ -156,7 +158,44 @@ def _route(
     except (OSError, ValueError, json.JSONDecodeError):
         return None
 
-    return result if isinstance(result, dict) and result.get("daemon") else None
+    if isinstance(result, dict) and result.get("daemon"):
+        return result
+
+    # First-turn fallback: the daemon may not exist yet. Use the installed CLI
+    # once; subsequent PreToolUse calls will normally hit the persistent daemon.
+    binary = os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("harness-router")
+    if not binary:
+        return None
+    tools_json = json.dumps(
+        [
+            {key: tool.get(key) for key in ("name", "description", "category", "risk")}
+            for tool in candidates
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    try:
+        proc = subprocess.run(
+            [
+                binary,
+                "route",
+                "--mode", "jev_only",
+                "--goal", goal,
+                "--observation", "Pre-tool-selection: choose the best next tool.",
+                "--tools-json", tools_json,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=os.environ.copy(),
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        result = json.loads(proc.stdout.strip())
+    except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError):
+        return None
+    return result if isinstance(result, dict) else None
 
 
 def _write_decision(
