@@ -223,6 +223,7 @@ def route(
                 "route",
                 "--mode", "jev_only",
                 "--verbose",
+                "--no-cache",
                 "--goal", goal,
                 "--observation", observation,
                 "--tools-json", tools_json,
