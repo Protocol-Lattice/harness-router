@@ -125,7 +125,7 @@ that event and cannot be intercepted by this extension.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `HARNESS_ROUTER_PYTHON_BIN` | `python3` | Python executable path, without arguments |
-| `HARNESS_ROUTER_MCP_BIN` | `harness-router-mcp` on `PATH` | MCP executable path, without arguments |
+| `HARNESS_ROUTER_MCP_URL` | `http://127.0.0.1:8765/mcp` | Persistent MCP HTTP endpoint |
 | `HARNESS_ROUTER_PRETOOL_TIMEOUT` | `4` | Total MCP/graph routing deadline in seconds |
 | `HARNESS_ROUTER_PRETOOL_MAX_CANDIDATES` | `8` | Shortlist size, bounded to 2–32 |
 | `HARNESS_ROUTER_PRETOOL_MIN_CONFIDENCE` | `0.80` | Minimum confidence for a redirect |
