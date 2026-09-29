@@ -628,7 +628,7 @@ def main() -> int:
     )[:MAX_OBSERVATION_CHARS]
 
     endpoint = _mcp_endpoint()
-    if not binary:
+    if not endpoint:
         _allow()
         return 0
 
