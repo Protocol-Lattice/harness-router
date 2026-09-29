@@ -10,7 +10,7 @@
             "timeout": 5,
             "statusMessage": "Precomputing next tool with Harness Router",
             "additionalContextLimit": 500,
-            "async": true
+            "async": false
           }
         ]
       }
