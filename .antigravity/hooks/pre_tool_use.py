@@ -344,7 +344,7 @@ def handle(payload: dict[str, Any]) -> dict[str, Any]:
         f"Antigravity is about to call {current!r}. "
         f"tool_input={json.dumps(call['args'], ensure_ascii=False)[:600]}"
     )[:900]
-    result, mode = route(binary, str(PROJECT_ROOT), goal, observation, current, candidates)
+    result, mode = route(endpoint, str(PROJECT_ROOT), goal, observation, current, candidates)
     selected, confidence = result.get("tool"), result.get("confidence")
     minimum = env_number("HARNESS_ROUTER_PRETOOL_MIN_CONFIDENCE", 0.80)
     if (
