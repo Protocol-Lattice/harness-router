@@ -179,13 +179,15 @@ The default provider uses the OpenRouter Decisions API.
 
 ## 30-second demo
 
-Start the MCP server:
+Start the persistent HTTP MCP server manually when running the router outside a harness:
 
 ```bash
 harness-router-mcp --transport streamable-http
 ```
 
 The hooks call `http://127.0.0.1:8765/mcp` by default. Override it with `HARNESS_ROUTER_MCP_URL`.
+
+For the Codex integration, you do **not** need to start it manually. The `SessionStart` hook starts `harness-router-mcp --transport streamable-http` once, waits for `127.0.0.1:8765`, and leaves the process running for the session. Every `PreToolUse` hook then reuses that HTTP endpoint instead of spawning an MCP process.
 
 Or route directly from the CLI:
 
@@ -237,12 +239,9 @@ Harness Router exposes two MCP tools over stdio:
 | `route` | The next tool is ambiguous but mostly local |
 | `route_mcts` | The first action depends on downstream consequences |
 
-Add it to Codex:
+For Codex, the project hook starts the HTTP MCP automatically at `SessionStart`; do not configure the HTTP server as a stdio `mcp_servers.*.command`. The `PreToolUse` hook talks directly to `HARNESS_ROUTER_MCP_URL` (default `http://127.0.0.1:8765/mcp`).
 
-```toml
-[mcp_servers.harness-router]
-command = "harness-router-mcp"
-```
+If you want the native MCP tools available to Codex separately, configure a normal stdio MCP server as documented by Codex. That is independent from the persistent HTTP endpoint used by the routing hook.
 
 Then keep the routing instruction simple:
 
