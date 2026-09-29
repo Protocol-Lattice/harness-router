@@ -15,6 +15,7 @@ import time
 HOST = os.environ.get("HARNESS_ROUTER_MCP_HOST", "127.0.0.1")
 PORT = int(os.environ.get("HARNESS_ROUTER_MCP_PORT", "8765"))
 PATH = os.environ.get("HARNESS_ROUTER_MCP_PATH", "/mcp")
+ENDPOINT = os.environ.get("HARNESS_ROUTER_MCP_URL", f"http://{HOST}:{PORT}{PATH}")
 STARTUP_TIMEOUT = float(os.environ.get("HARNESS_ROUTER_MCP_STARTUP_TIMEOUT", "5"))
 
 
@@ -64,6 +65,10 @@ def _start_server() -> subprocess.Popen[str]:
 
 
 def main() -> int:
+    # A custom/remote endpoint is managed by the caller, not this local hook.
+    if ENDPOINT.rstrip("/") != f"http://{HOST}:{PORT}{PATH}".rstrip("/"):
+        return 0
+
     if _endpoint_ready():
         return 0
 
