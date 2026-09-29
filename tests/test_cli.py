@@ -16,9 +16,25 @@ def test_cli_parser_supports_route() -> None:
     assert args.goal == "Fix tests"
     assert args.hierarchical_threshold == 24
     assert args.verbose is False
+    assert args.no_cache is False
 
 
 def test_cli_without_subcommand_is_valid() -> None:
     parser = build_parser()
     args = parser.parse_args([])
     assert args.command is None
+
+
+def test_cli_no_cache_flag() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "route",
+            "--goal",
+            "Fix tests",
+            "--tools-json",
+            '[{"name":"read_file","description":"Read a file"},{"name":"edit_file","description":"Edit a file"}]',
+            "--no-cache",
+        ]
+    )
+    assert args.no_cache is True
