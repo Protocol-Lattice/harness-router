@@ -11,13 +11,10 @@ import hashlib
 import json
 import math
 import os
-import queue
 import re
 import shlex
-import shutil
 import subprocess
 import sys
-import threading
 import time
 from difflib import SequenceMatcher
 from pathlib import Path
