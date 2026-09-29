@@ -59,9 +59,16 @@ def route(goal: str, tools: list[dict[str,Any]], cwd: str, timeout: float) -> di
 def main() -> int:
     try: payload=json.load(sys.stdin)
     except (OSError,ValueError): payload={}
-    if not isinstance(payload,dict): return 0
-    goal=str(payload.get("goal") or "").strip()
+    if not isinstance(payload,dict): payload={}
+    goal=str(payload.get("goal") or os.environ.get("HARNESS_ROUTER_GOAL") or "").strip()
     tools=payload.get("tools")
+    if not isinstance(tools,list):
+        catalog=os.environ.get("HARNESS_ROUTER_TOOLS_FILE")
+        if catalog:
+            try:
+                raw=json.loads(Path(catalog).read_text(encoding="utf-8"))
+                tools=raw.get("tools",raw) if isinstance(raw,dict) else raw
+            except (OSError,ValueError): tools=[]
     if not goal or not isinstance(tools,list) or len(tools)<2: return 0
     cwd=str(payload.get("cwd") or os.getcwd())
     session=str(payload.get("session_id") or "default")
