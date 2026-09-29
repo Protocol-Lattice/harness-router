@@ -235,6 +235,8 @@ def route(
             [
                 binary,
                 "route",
+                "--mode", "jev_only",
+                "--verbose",
                 "--goal", goal,
                 "--observation", observation,
                 "--tools-json", tools_json,
@@ -254,7 +256,9 @@ def route(
         result = json.loads(proc.stdout.strip())
     except json.JSONDecodeError:
         return {}, "route"
-    return (result if isinstance(result, dict) else {}), "route"
+    if not isinstance(result, dict) or result.get("provider_requests", 0) < 1:
+        return {}, "route"
+    return result, "route"
 
 
 def handle(payload: dict[str, Any]) -> None:
