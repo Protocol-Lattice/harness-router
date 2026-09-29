@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Route Claude Code tool choices through harness-router-mcp; fail open on errors.
+"""Route Claude Code tool choices through harness-router; fail open on errors.
 
 This portable adapter preserves the Codex hook's shortlisting and optional MCTS
 flow without depending on .codex, an installed Python package, or an MCP SDK.
@@ -213,99 +213,48 @@ def env_number(name: str, default: float) -> float:
 
 def route(
     binary: str,
-    cwd: str,
+    cwd: str | Path,
     goal: str,
     observation: str,
     current: str,
     candidates: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], str]:
-    timeout = env_number("HARNESS_ROUTER_PRETOOL_TIMEOUT", 4.0)
+    timeout = float(os.environ.get("HARNESS_ROUTER_PRETOOL_TIMEOUT", "4.0"))
     if timeout <= 0:
         return {}, "route"
-    client = MCPClient(binary, cwd, timeout)
-    try:
-        client.request(
-            "initialize",
-            {
-                "protocolVersion": "2025-06-18",
-                "capabilities": {},
-                "clientInfo": {"name": "harness-router-claude-hook", "version": "1"},
-            },
-        )
-        client.send({"method": "notifications/initialized", "params": {}})
-        compact_tools = [
+    tools_json = json.dumps(
+        [
             {key: tool.get(key) for key in ("name", "description", "category", "risk")}
             for tool in candidates
-        ]
-        result = client.call(
-            "route",
-            {
-                "goal": goal,
-                "observation": observation,
-                "tools": compact_tools,
-            },
-        )
-        graph_command = os.environ.get("HARNESS_ROUTER_PRETOOL_MCTS_GRAPH_CMD", "").strip()
-        threshold = env_number("HARNESS_ROUTER_PRETOOL_MCTS_THRESHOLD", 0.80)
-        confidence = result.get("confidence")
-        confident = (
-            isinstance(confidence, (float, int))
-            and confidence >= threshold
-            and not result.get("fallback")
-        )
-        remaining = client.deadline - time.monotonic()
-        if not graph_command or confident or len(candidates) < 3 or remaining <= 0:
-            return result, "route"
-        # Only an explicitly configured, side-effect-free simulator can supply this graph.
-        graph_proc = subprocess.run(
-            shlex.split(graph_command),
-            cwd=cwd,
-            input=json.dumps(
-                {
-                    "goal": goal,
-                    "observation": observation,
-                    "current_tool": current,
-                    "candidates": candidates,
-                    "route_result": result,
-                }
-            ),
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    try:
+        proc = subprocess.run(
+            [
+                binary,
+                "route",
+                "--goal", goal,
+                "--observation", observation,
+                "--tools-json", tools_json,
+            ],
+            cwd=str(cwd),
             capture_output=True,
             text=True,
-            timeout=remaining,
+            timeout=timeout,
+            env=os.environ.copy(),
             check=False,
         )
-        if graph_proc.returncode:
-            return result, "route"
-        graph = json.loads(graph_proc.stdout)
-        if (
-            not isinstance(graph, dict)
-            or not isinstance(graph.get("root_state"), str)
-            or not isinstance(graph.get("states"), list)
-            or not isinstance(graph.get("transitions"), list)
-        ):
-            return result, "route"
-        if client.deadline <= time.monotonic():
-            return result, "route"
-        mcts = client.call(
-            "route_mcts",
-            {
-                "root_state": graph["root_state"],
-                "states": graph["states"],
-                "transitions": graph["transitions"],
-                "simulations": graph.get("simulations", 64),
-                "max_depth": graph.get("max_depth", 3),
-                "use_jev_prior": graph.get("use_jev_prior", True),
-            },
-        )
-        return (mcts, "route_mcts") if mcts else (result, "route")
-    finally:
-        client.close()
-
-
-def redirect_marker(root: Path, payload: dict[str, Any], turn: str) -> Path:
-    key = json.dumps([payload.get("session_id"), payload.get("agent_id"), turn])
-    digest = hashlib.sha256(key.encode()).hexdigest()
-    return root / ".claude" / "harness-router" / "redirects" / f"{digest}.json"
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {}, "route"
+    if proc.returncode != 0:
+        return {}, "route"
+    try:
+        result = json.loads(proc.stdout.strip())
+    except json.JSONDecodeError:
+        return {}, "route"
+    return (result if isinstance(result, dict) else {}), "route"
 
 
 def handle(payload: dict[str, Any]) -> None:
@@ -325,7 +274,7 @@ def handle(payload: dict[str, Any]) -> None:
     # Older Claude versions lack prompt_id. Use the actual user message's UUID/text.
     marker = redirect_marker(root, payload, str(payload.get("prompt_id") or prompt_uuid or goal))
     candidates = shortlist(tools, current, goal)
-    binary = os.environ.get("HARNESS_ROUTER_MCP_BIN") or shutil.which("harness-router-mcp")
+    binary = os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("harness-router")
     if len(candidates) < 2 or not binary or marker.exists():
         emit()
         return

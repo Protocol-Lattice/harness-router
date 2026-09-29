@@ -308,107 +308,39 @@ def _similar_tools(
     ]
 
 
-def _mcp_binary() -> str | None:
-    return (
-        os.environ.get("HARNESS_ROUTER_MCP_BIN")
-        or shutil.which("harness-router-mcp")
-    )
+def _router_binary() -> str | None:
+    return os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("harness-router")
 
 
-def _mcp_send(proc: subprocess.Popen[str], message: dict[str, Any]) -> None:
-    if proc.stdin is None:
-        raise RuntimeError("MCP stdin unavailable")
-    proc.stdin.write(json.dumps(message, separators=(",", ":")) + "\n")
-    proc.stdin.flush()
-
-
-def _mcp_read_response(
-    proc: subprocess.Popen[str],
-    request_id: int,
-    deadline: float,
-) -> dict[str, Any]:
-    import select
-    import time
-
-    if proc.stdout is None:
-        raise RuntimeError("MCP stdout unavailable")
-
-    while time.monotonic() < deadline:
-        remaining = max(0.0, deadline - time.monotonic())
-        ready, _, _ = select.select([proc.stdout], [], [], remaining)
-        if not ready:
-            break
-
-        line = proc.stdout.readline()
-        if not line:
-            break
-
-        try:
-            message = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        if message.get("id") != request_id:
-            continue
-        if "error" in message:
-            raise RuntimeError(str(message["error"]))
-
-        result = message.get("result")
-        return result if isinstance(result, dict) else {}
-
-    raise TimeoutError("timed out waiting for harness-router-mcp")
-
-
-def _extract_mcp_tool_result(response: dict[str, Any]) -> dict[str, Any]:
-    structured = response.get("structuredContent")
-    if isinstance(structured, dict):
-        return structured
-
-    for item in response.get("content", []):
-        if not isinstance(item, dict) or item.get("type") != "text":
-            continue
-        text = item.get("text")
-        if not isinstance(text, str):
-            continue
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict):
-            return parsed
-
-    return {}
-
-
-def _build_mcts_graph(
-    *,
-    cwd: str,
+def _route_hybrid(
+    binary: str,
+    cwd: str | Path,
     goal: str,
     observation: str,
     current: str,
     candidates: list[dict[str, Any]],
-    route_result: dict[str, Any],
-    timeout: float,
-) -> dict[str, Any] | None:
-    command = os.environ.get("HARNESS_ROUTER_PRETOOL_MCTS_GRAPH_CMD", "").strip()
-    if not command:
-        return None
-
-    import shlex
-
-    payload = {
-        "goal": goal,
-        "observation": observation,
-        "current_tool": current,
-        "candidates": candidates,
-        "route_result": route_result,
-    }
-
+) -> tuple[dict[str, Any], str]:
+    timeout = float(os.environ.get("HARNESS_ROUTER_PRETOOL_TIMEOUT", "4.0"))
+    if timeout <= 0:
+        return {}, "route"
+    tools_json = json.dumps(
+        [
+            {key: tool.get(key) for key in ("name", "description", "category", "risk")}
+            for tool in candidates
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     try:
         proc = subprocess.run(
-            shlex.split(command),
-            cwd=cwd,
-            input=json.dumps(payload, ensure_ascii=False),
+            [
+                binary,
+                "route",
+                "--goal", goal,
+                "--observation", observation,
+                "--tools-json", tools_json,
+            ],
+            cwd=str(cwd),
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -416,189 +348,15 @@ def _build_mcts_graph(
             check=False,
         )
     except (OSError, subprocess.SubprocessError, ValueError):
-        return None
-
+        return {}, "route"
     if proc.returncode != 0:
-        return None
-
+        return {}, "route"
     try:
-        graph = json.loads(proc.stdout)
+        result = json.loads(proc.stdout.strip())
     except json.JSONDecodeError:
-        return None
+        return {}, "route"
+    return (result if isinstance(result, dict) else {}), "route"
 
-    if not isinstance(graph, dict):
-        return None
-    if not isinstance(graph.get("root_state"), str):
-        return None
-    if not isinstance(graph.get("states"), list):
-        return None
-    if not isinstance(graph.get("transitions"), list):
-        return None
-    return graph
-
-
-def _should_try_mcts(
-    result: dict[str, Any],
-    candidate_count: int,
-) -> bool:
-    if candidate_count < 3:
-        return False
-
-    try:
-        threshold = float(
-            os.environ.get(
-                "HARNESS_ROUTER_PRETOOL_MCTS_THRESHOLD",
-                DEFAULT_MCTS_THRESHOLD,
-            )
-        )
-    except ValueError:
-        threshold = DEFAULT_MCTS_THRESHOLD
-
-    confidence = result.get("confidence")
-    confidence_value = (
-        float(confidence)
-        if isinstance(confidence, (int, float))
-        else 0.0
-    )
-
-    return bool(result.get("fallback")) or confidence_value < threshold
-
-
-def _mcp_route_hybrid(
-    *,
-    binary: str,
-    cwd: str,
-    goal: str,
-    observation: str,
-    current: str,
-    candidates: list[dict[str, Any]],
-    timeout: float,
-) -> tuple[dict[str, Any], str]:
-    import time
-
-    proc = subprocess.Popen(
-        [binary],
-        cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-        env=os.environ.copy(),
-    )
-
-    try:
-        deadline = time.monotonic() + timeout
-
-        _mcp_send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2025-06-18",
-                    "capabilities": {},
-                    "clientInfo": {
-                        "name": "harness-router-codex-hook",
-                        "version": "1",
-                    },
-                },
-            },
-        )
-        _mcp_read_response(proc, 1, deadline)
-
-        _mcp_send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "method": "notifications/initialized",
-                "params": {},
-            },
-        )
-
-        route_tools = [
-            {
-                "name": tool["name"],
-                "description": str(tool.get("description", "")),
-                "category": tool.get("category"),
-                "risk": str(tool.get("risk", "medium")),
-            }
-            for tool in candidates
-        ]
-
-        _mcp_send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "tools/call",
-                "params": {
-                    "name": "route",
-                    "arguments": {
-                        "goal": goal,
-                        "observation": observation,
-                        "tools": route_tools,
-                    },
-                },
-            },
-        )
-        route_response = _mcp_read_response(proc, 2, deadline)
-        route_result = _extract_mcp_tool_result(route_response)
-
-        if not _should_try_mcts(route_result, len(candidates)):
-            return route_result, "route"
-
-        remaining = max(0.1, deadline - time.monotonic())
-        graph = _build_mcts_graph(
-            cwd=cwd,
-            goal=goal,
-            observation=observation,
-            current=current,
-            candidates=candidates,
-            route_result=route_result,
-            timeout=remaining,
-        )
-        if graph is None:
-            return route_result, "route"
-
-        simulations = graph.get("simulations", DEFAULT_MCTS_SIMULATIONS)
-        max_depth = graph.get("max_depth", DEFAULT_MCTS_MAX_DEPTH)
-        use_jev_prior = graph.get("use_jev_prior", True)
-
-        _mcp_send(
-            proc,
-            {
-                "jsonrpc": "2.0",
-                "id": 3,
-                "method": "tools/call",
-                "params": {
-                    "name": "route_mcts",
-                    "arguments": {
-                        "root_state": graph["root_state"],
-                        "states": graph["states"],
-                        "transitions": graph["transitions"],
-                        "simulations": int(simulations),
-                        "max_depth": int(max_depth),
-                        "use_jev_prior": bool(use_jev_prior),
-                    },
-                },
-            },
-        )
-        mcts_response = _mcp_read_response(proc, 3, deadline)
-        mcts_result = _extract_mcp_tool_result(mcts_response)
-        if not mcts_result:
-            return route_result, "route"
-
-        return mcts_result, "route_mcts"
-    finally:
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=0.5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=0.5)
 
 def main() -> int:
     try:
@@ -650,7 +408,7 @@ def main() -> int:
         f"tool_input={_compact_tool_input(payload.get('tool_input'))}"
     )[:MAX_OBSERVATION_CHARS]
 
-    binary = _mcp_binary()
+    binary = _router_binary()
     if not binary:
         _allow()
         return 0
@@ -663,7 +421,7 @@ def main() -> int:
     )
 
     try:
-        result, routing_mode = _mcp_route_hybrid(
+        result, routing_mode = _route_hybrid(
             binary=binary,
             cwd=cwd,
             goal=goal,

@@ -199,147 +199,48 @@ def env_number(name: str, default: float) -> float:
 
 def route(
     binary: str,
-    cwd: str,
+    cwd: str | Path,
     goal: str,
     observation: str,
     current: str,
     candidates: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], str]:
-    timeout = env_number("HARNESS_ROUTER_PRETOOL_TIMEOUT", 4.0)
+    timeout = float(os.environ.get("HARNESS_ROUTER_PRETOOL_TIMEOUT", "4.0"))
     if timeout <= 0:
         return {}, "route"
-    client = MCPClient(binary, cwd, timeout)
-    try:
-        client.request(
-            "initialize",
-            {
-                "protocolVersion": "2025-06-18",
-                "capabilities": {},
-                "clientInfo": {"name": "harness-router-antigravity-hook", "version": "1"},
-            },
-        )
-        client.send({"method": "notifications/initialized", "params": {}})
-        compact_tools = [
+    tools_json = json.dumps(
+        [
             {key: tool.get(key) for key in ("name", "description", "category", "risk")}
             for tool in candidates
-        ]
-        result = client.call(
-            "route",
-            {
-                "goal": goal,
-                "observation": observation,
-                "tools": compact_tools,
-            },
-        )
-        graph_command = os.environ.get("HARNESS_ROUTER_PRETOOL_MCTS_GRAPH_CMD", "").strip()
-        threshold = env_number("HARNESS_ROUTER_PRETOOL_MCTS_THRESHOLD", 0.80)
-        confidence = result.get("confidence")
-        confident = (
-            isinstance(confidence, (float, int))
-            and confidence >= threshold
-            and not result.get("fallback")
-        )
-        remaining = client.deadline - time.monotonic()
-        if not graph_command or confident or len(candidates) < 3 or remaining <= 0:
-            return result, "route"
-        # Only an explicitly configured, side-effect-free simulator can supply this graph.
-        graph_proc = subprocess.run(
-            shlex.split(graph_command),
-            cwd=cwd,
-            input=json.dumps(
-                {
-                    "goal": goal,
-                    "observation": observation,
-                    "current_tool": current,
-                    "candidates": candidates,
-                    "route_result": result,
-                }
-            ),
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    try:
+        proc = subprocess.run(
+            [
+                binary,
+                "route",
+                "--goal", goal,
+                "--observation", observation,
+                "--tools-json", tools_json,
+            ],
+            cwd=str(cwd),
             capture_output=True,
             text=True,
-            timeout=remaining,
+            timeout=timeout,
+            env=os.environ.copy(),
             check=False,
         )
-        if graph_proc.returncode:
-            return result, "route"
-        graph = json.loads(graph_proc.stdout)
-        if (
-            not isinstance(graph, dict)
-            or not isinstance(graph.get("root_state"), str)
-            or not isinstance(graph.get("states"), list)
-            or not isinstance(graph.get("transitions"), list)
-        ):
-            return result, "route"
-        if client.deadline <= time.monotonic():
-            return result, "route"
-        mcts = client.call(
-            "route_mcts",
-            {
-                "root_state": graph["root_state"],
-                "states": graph["states"],
-                "transitions": graph["transitions"],
-                "simulations": graph.get("simulations", 64),
-                "max_depth": graph.get("max_depth", 3),
-                "use_jev_prior": graph.get("use_jev_prior", True),
-            },
-        )
-        return (mcts, "route_mcts") if mcts else (result, "route")
-    finally:
-        client.close()
-
-
-def load_tools(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """Refresh the actual runtime inventory; never route from a stale snapshot."""
-    inline = os.environ.get("HARNESS_ROUTER_ANTIGRAVITY_TOOLS_JSON")
-    if inline is not None:
-        if len(inline.encode("utf-8")) > MAX_CATALOG_BYTES:
-            raise ValueError("Tool catalog is too large")
-        return normalize_tools(json.loads(inline))
-    configured = os.environ.get("HARNESS_ROUTER_ANTIGRAVITY_TOOLS_FILE")
-    if configured:
-        path = Path(configured).expanduser()
-        if not path.is_absolute():
-            path = PROJECT_ROOT / path
-        with path.open("rb") as handle:
-            data = handle.read(MAX_CATALOG_BYTES + 1)
-        if len(data) > MAX_CATALOG_BYTES:
-            raise ValueError("Tool catalog is too large")
-        return normalize_tools(json.loads(data))
-    timeout = env_number("HARNESS_ROUTER_DISCOVERY_TIMEOUT", 2.0)
-    if timeout <= 0:
-        return []
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(PROJECT_ROOT / ".antigravity/hooks/discover_tools.py"),
-            "--list-tools",
-        ],
-        cwd=PROJECT_ROOT,
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
-        timeout=timeout + 0.5,
-        check=True,
-    )
-    return normalize_tools(json.loads(result.stdout))
-
-
-def redirect_marker(payload: dict[str, Any]) -> Path | None:
-    conversation = payload.get("conversationId")
-    if not isinstance(conversation, str) or not conversation.strip():
-        return None
-    key = hashlib.sha256(conversation.encode("utf-8")).hexdigest()
-    directory = PROJECT_ROOT / ".antigravity/harness-router/sessions"
-    if not directory.resolve().is_relative_to(PROJECT_ROOT.resolve()):
-        raise ValueError("Redirect state must stay in the project")
-    return directory / f"{key}.redirected"
-
-
-def stop(payload: dict[str, Any]) -> dict[str, Any]:
-    # A Stop with background work still running must not re-arm the same turn.
-    if payload.get("fullyIdle") is True and (marker := redirect_marker(payload)):
-        marker.unlink(missing_ok=True)
-    return {}
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {}, "route"
+    if proc.returncode != 0:
+        return {}, "route"
+    try:
+        result = json.loads(proc.stdout.strip())
+    except json.JSONDecodeError:
+        return {}, "route"
+    return (result if isinstance(result, dict) else {}), "route"
 
 
 def handle(payload: dict[str, Any]) -> dict[str, Any]:
@@ -358,7 +259,7 @@ def handle(payload: dict[str, Any]) -> dict[str, Any]:
         f"Choose the best next Antigravity tool for the intent in the pending tool call. {intent}"
     )[:1600]
     candidates = shortlist(tools, current, goal)
-    binary = os.environ.get("HARNESS_ROUTER_MCP_BIN") or shutil.which("harness-router-mcp")
+    binary = os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("harness-router")
     if len(candidates) < 2 or not binary:
         return {}
     observation = (
