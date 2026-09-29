@@ -98,6 +98,22 @@ Codex chooses a tool
 
 The hooks are **fail-open**: if routing fails, the agent keeps its original choice.
 
+### Hook decision latency
+
+All five hook integrations use the same `harness-router-mcp` routing core, so the decision itself is not a different model per harness. The latest recorded ordinary-routing benchmark measured the shared `route` decision at **404.5 ms mean / 332 ms median / 718 ms p95** over 24 choices. The 4,096-simulation `route_mcts` benchmark measured **388 ms mean / 372.5 ms median / 545 ms p95**.
+
+| Hook | Routing decision | Measured router latency |
+| --- | --- | ---: |
+| Codex | `route` → optional `route_mcts` | **332 ms median** (`route`) |
+| Claude Code | `route` → optional `route_mcts` | **332 ms median** (`route`) |
+| ohmypi | `route` → optional `route_mcts` | **332 ms median** (`route`) |
+| DeepSeek Harness | `route` → optional `route_mcts` | **332 ms median** (`route`) |
+| Antigravity | `route` → optional `route_mcts` | **332 ms median** (`route`) |
+
+These are **shared router-core measurements**, not five separate end-to-end hook benchmarks. Hook startup, catalog discovery, process spawning, harness scheduling, and provider/network conditions can add overhead that varies by harness. The benchmark timing includes MCP/provider overhead for the router call but not the surrounding hook wrapper.
+
+See [`benchmark-results/decision-latency-2026-09-26.md`](benchmark-results/decision-latency-2026-09-26.md) and [`benchmark-results/mcts-4096-decision-latency-2026-09-26.md`](benchmark-results/mcts-4096-decision-latency-2026-09-26.md).
+
 ### 2. Skill — route only when useful
 
 Use the included Harness Router skill when you want routing to stay explicit and selective.
