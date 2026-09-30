@@ -138,6 +138,7 @@ async def _handle(
             ),
             tools,
         )
+        provider_requests = provider.requests_made - before
         payload: dict[str, object] = {
             "tool": decision.tool,
             "category": decision.category,
@@ -145,7 +146,8 @@ async def _handle(
             "fallback": decision.fallback,
             "fallback_reason": decision.fallback_reason,
             "provider": "openrouter",
-            "provider_requests": provider.requests_made - before,
+            "provider_requests": provider_requests,
+            "cache_hit": provider_requests == 0 and not decision.fallback,
             "daemon": True,
         }
     except Exception as exc:
