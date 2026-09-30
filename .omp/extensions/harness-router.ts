@@ -1,33 +1,36 @@
-/** ohmypi tool_call hooks backed by the portable Harness Router MCP bridge. */
+/** ohmypi decision-loop hooks backed by the shared Harness Router bridge. */
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const bridge = fileURLToPath(new URL("../hooks/pre_tool_use.py", import.meta.url));
-const redirectType = "harness-router.ohmypi.redirect";
+const bridge = fileURLToPath(new URL("../../hooks/pre_decision.py", import.meta.url));
+
+type RouterState = {
+  goal: string;
+  nextTool: string;
+  redirected: boolean;
+};
 
 function isRouter(name: string): boolean {
   return name.toLowerCase().replaceAll("-", "_").includes("harness_router");
 }
 
-function latestUser(ctx: ExtensionContext): { id: string; text: string; redirected: boolean } {
+function latestUser(ctx: ExtensionContext): { id: string; text: string } {
   const branch = ctx.sessionManager.getBranch();
   for (let i = branch.length - 1; i >= 0; i--) {
     const entry = branch[i];
     if (entry.type !== "message" || entry.message.role !== "user") continue;
     if (entry.message.attribution === "agent") continue;
     const content = entry.message.content;
-    const text = typeof content === "string" ? content : content
-      .filter((block) => block.type === "text").map((block) => block.text).join(" ");
-    const redirected = branch.slice(i + 1).some((item) => item.type === "custom"
-      && item.customType === redirectType
-      && (item.data as { userEntryId?: string } | undefined)?.userEntryId === entry.id);
-    return { id: entry.id, text: text.slice(0, 1600), redirected };
+    const text = typeof content === "string"
+      ? content
+      : content.filter((block) => block.type === "text").map((block) => block.text).join(" ");
+    return { id: entry.id, text: text.slice(0, 1600) };
   }
-  return { id: "", text: "", redirected: false };
+  return { id: "", text: "" };
 }
 
 function liveTools(pi: ExtensionAPI) {
@@ -37,7 +40,7 @@ function liveTools(pi: ExtensionAPI) {
 
 async function atomicJSON(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.${randomUUID()}.tmp`;
+  const temporary = `${path}.${Date.now()}.tmp`;
   try {
     await writeFile(temporary, JSON.stringify(value, null, 2) + "\n", { mode: 0o600 });
     await rename(temporary, path);
@@ -57,96 +60,146 @@ async function publishCatalog(pi: ExtensionAPI, ctx: ExtensionContext): Promise<
     await atomicJSON(join(root, "harness-router", "sessions", `${key}.json`), catalog);
     await atomicJSON(join(root, "harness-router-tools.json"), catalog);
   } catch {
-    // Catalog files are for inspection; routing reads the live runtime registry.
+    // Catalog persistence is diagnostic; liveTools remains authoritative.
   }
 }
 
-function runBridge(payload: unknown, cwd: string): Promise<Record<string, unknown>> {
-  const seconds = Number(process.env.HARNESS_ROUTER_PRETOOL_TIMEOUT ?? "4");
-  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 3600) return Promise.resolve({});
+function runRouter(
+  payload: Record<string, unknown>,
+  cwd: string,
+): Promise<Record<string, unknown>> {
+  const seconds = Number(process.env.HARNESS_ROUTER_PREDECISION_TIMEOUT ?? "4");
+  if (!Number.isFinite(seconds) || seconds <= 0) return Promise.resolve({});
   return new Promise((resolve) => {
-    // A process group lets the outer deadline also stop the MCP/graph children on POSIX.
     const child = spawn(process.env.HARNESS_ROUTER_PYTHON_BIN || "python3", [bridge], {
       cwd, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "ignore"],
     });
     let output = "";
     let settled = false;
-    const finish = (value: Record<string, unknown> = {}) => {
+    const finish = (value: Record<string, unknown>) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       try {
         if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL");
         else child.kill("SIGKILL");
-      } catch { /* The process may already have exited. */ }
+      } catch {}
       child.stdin.destroy();
       child.stdout.destroy();
       resolve(value);
     };
-    // Leave time for Python startup and its bounded MCP cleanup.
-    const timer = setTimeout(() => finish(), (seconds + 1) * 1000);
-    child.on("error", () => finish());
-    child.stdin.on("error", () => finish());
-    child.stdout.on("error", () => finish());
+    const timer = setTimeout(() => finish({}), (seconds + 1) * 1000);
+    child.on("error", () => finish({}));
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
       output += chunk;
-      if (output.length > 64_000) finish();
+      if (output.length > 64_000) finish({});
     });
     child.on("close", (code) => {
-      if (code !== 0) return finish();
+      if (code !== 0) return finish({});
       try {
-        const result = JSON.parse(output);
-        finish(result && typeof result === "object" && !Array.isArray(result) ? result : {});
-      } catch { finish(); }
+        const value = JSON.parse(output.trim().split("\n", 1)[0]);
+        finish(value && typeof value === "object" && !Array.isArray(value) ? value : {});
+      } catch {
+        finish({});
+      }
     });
-    try { child.stdin.end(JSON.stringify(payload)); } catch { finish(); }
+    try {
+      child.stdin.end(JSON.stringify(payload));
+    } catch {
+      finish({});
+    }
   });
 }
 
-export default function harnessRouter(pi: ExtensionAPI): void {
-  let state = { goal: "", redirected: false };
+async function precompute(
+  state: RouterState,
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  observation: unknown,
+  lastAction: string | null,
+): Promise<void> {
+  const tools = liveTools(pi);
+  if (!state.goal || tools.length < 2) return;
+  const result = await runRouter({
+    harness: "ohmypi",
+    hook: "tool_result",
+    cwd: ctx.cwd,
+    session_id: ctx.sessionManager.getSessionId(),
+    goal: state.goal,
+    observation: typeof observation === "string"
+      ? observation.slice(0, 4000)
+      : JSON.stringify(observation).slice(0, 4000),
+    last_action: lastAction,
+    tools,
+  }, ctx.cwd);
+  if (typeof result.tool === "string" && result.tool && !result.fallback) {
+    state.nextTool = result.tool;
+  }
+}
 
-  const restore = async (_event: unknown, ctx: ExtensionContext) => {
-    state = { goal: "", redirected: false };
-    try {
-      const user = latestUser(ctx);
-      state = { goal: user.text, redirected: user.redirected };
-    } catch { /* The session may not have any branch history yet. */ }
-    await publishCatalog(pi, ctx);
-  };
-  pi.on("session_start", restore);
-  pi.on("session_switch", restore);
-  pi.on("session_branch", restore);
-  pi.on("session_tree", restore);
-  pi.on("session_shutdown", () => { state = { goal: "", redirected: true }; });
-  pi.on("before_agent_start", async (event, ctx) => {
-    state = { goal: event.prompt.slice(0, 1600), redirected: false };
+export default function harnessRouter(pi: ExtensionAPI): void {
+  const state: RouterState = { goal: "", nextTool: "", redirected: false };
+
+  pi.on("session_start", async (_event, ctx) => {
+    state.goal = latestUser(ctx).text;
+    state.nextTool = "";
+    state.redirected = false;
     await publishCatalog(pi, ctx);
   });
 
-  pi.on("tool_call", async (event, ctx) => {
-    // ohmypi blocks tool calls if an extension throws. Catch all bridge failures.
+  pi.on("session_switch", async (_event, ctx) => {
+    state.goal = latestUser(ctx).text;
+    state.nextTool = "";
+    state.redirected = false;
+    await publishCatalog(pi, ctx);
+  });
+
+  pi.on("session_branch", async (_event, ctx) => {
+    state.goal = latestUser(ctx).text;
+    state.nextTool = "";
+    state.redirected = false;
+    await publishCatalog(pi, ctx);
+  });
+
+  pi.on("before_agent_start", async (event, ctx) => {
+    state.goal = event.prompt.slice(0, 1600);
+    state.nextTool = "";
+    state.redirected = false;
+    await publishCatalog(pi, ctx);
+    await precompute(state, pi, ctx, "Initial model decision", null);
+  });
+
+  pi.on("tool_result", async (event, ctx) => {
     try {
-      const turn = state;
-      if (turn.redirected || isRouter(event.toolName)) return;
-      const user = latestUser(ctx);
-      if (user.redirected) return;
-      const tools = liveTools(pi);
-      if (tools.length < 2 || !tools.some((tool) => tool.name === event.toolName)) return;
-      const sessionId = ctx.sessionManager.getSessionId();
-      const result = await runBridge({ hook_event_name: "tool_call", cwd: ctx.cwd,
-        session_id: sessionId, tool_name: event.toolName, tool_input: event.input,
-        goal: turn.goal || user.text, tools }, ctx.cwd);
-      if (state !== turn || turn.redirected || ctx.sessionManager.getSessionId() !== sessionId) return;
-      if (result.block !== true || typeof result.reason !== "string" || !result.reason
-        || typeof result.tool !== "string" || result.tool === event.toolName
-        || !tools.some((tool) => tool.name === result.tool)
-        || !pi.getActiveTools().includes(result.tool)) return;
-      // No await between checking and claiming: parallel calls can redirect only once.
-      turn.redirected = true;
-      pi.appendEntry(redirectType, { userEntryId: user.id, tool: result.tool });
-      return { block: true, reason: result.reason };
+      await precompute(
+        state,
+        pi,
+        ctx,
+        {
+          content: (event as any).content,
+          details: (event as any).details,
+          isError: (event as any).isError,
+        },
+        event.toolName,
+      );
+    } catch {
+      // Precomputation is fail-open and must never break tool_result handling.
+    }
+  });
+
+  pi.on("tool_call", async (event, ctx) => {
+    try {
+      if (isRouter(event.toolName)) return;
+      const expected = state.nextTool;
+      if (!expected || expected === event.toolName || state.redirected) return;
+
+      state.redirected = true;
+      const reason = (
+        `Harness Router precomputed ${expected} as the next tool, but the model ` +
+        `selected ${event.toolName}. Re-plan once using the current goal.`
+      );
+      return { block: true, reason };
     } catch {
       return;
     }
