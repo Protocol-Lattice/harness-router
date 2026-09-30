@@ -91,6 +91,35 @@ def main() -> int:
         )
         if proc.stderr:
             print(proc.stderr.rstrip(), file=sys.stderr)
+
+        try:
+            decision = (
+                json.loads(proc.stdout.strip().splitlines()[0])
+                if proc.stdout.strip()
+                else {}
+            )
+        except (ValueError, TypeError):
+            decision = {}
+
+        selected = decision.get("tool") if isinstance(decision, dict) else None
+        fallback = bool(decision.get("fallback")) if isinstance(decision, dict) else True
+        if isinstance(selected, str) and selected.strip() and not fallback:
+            try:
+                confidence = float(decision.get("confidence", 0.0))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            mode = str(decision.get("routing_mode") or "route")
+            print(json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": (
+                        f"Harness Router selected {selected!r} as the next tool "
+                        f"(confidence {confidence:.3f}, mode {mode}). "
+                        "Use that tool for the next step when it matches the current state."
+                    ),
+                }
+            }, separators=(",", ":")))
+            return 0
     except (OSError, subprocess.SubprocessError, ValueError):
         pass
 
