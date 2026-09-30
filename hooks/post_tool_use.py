@@ -121,9 +121,17 @@ def main() -> int:
     if proc.stderr:
         print(proc.stderr.rstrip(), file=sys.stderr)
 
-    # PostToolUse has no routing output contract: precomputation is intentionally
-    # side-effect-only. The next PreToolUse/PreInvocation reads decision.json.
-    print(json.dumps({}))
+    # Expose the computed decision to provider-specific PostToolUse adapters.
+    # The decision is also persisted in the shared session store, so adapters
+    # that cannot return model context can consume it at their next pre-invocation
+    # checkpoint.
+    try:
+        decision = json.loads(proc.stdout.strip().splitlines()[0]) if proc.stdout.strip() else {}
+    except (ValueError, TypeError):
+        decision = {}
+    if not isinstance(decision, dict):
+        decision = {}
+    print(json.dumps(decision, separators=(",", ":"), ensure_ascii=False))
     return 0
 
 
