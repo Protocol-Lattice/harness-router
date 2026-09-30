@@ -105,7 +105,7 @@ def owned_handler(handler: dict[str, Any], provider: str) -> bool:
     if provider == "deepseek":
         scripts = [".dsh/hooks/hook.py"]
     else:
-        scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_tool_use")]
+        scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_decision", "pre_tool_use")]
     return any(
         word == script or word.endswith("/" + script) for word in words for script in scripts
     )
@@ -355,6 +355,8 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
                 if not isinstance(catalog.get("tools"), list):
                     raise ValueError(f"Invalid tool catalog: {relative}")
             planned[root / relative] = data
+        for relative in COMMON_ASSETS:
+            planned[root / relative] = asset(relative, source, ref)
         config = root / config_path
         check_target(root, config)
         existing = object_from_json(config.read_bytes(), str(config)) if config.exists() else {}
