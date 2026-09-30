@@ -104,6 +104,21 @@ def main()->int:
     event=str(p.get("hook_event_name") or "")
     if event=="PostToolUse": return precompute(p)
     if event=="PreToolUse": return validate(p)
+    if event=="Stop":
+        script = Path(__file__).with_name("stop.py")
+        try:
+            result = subprocess.run(
+                [sys.executable, str(script)],
+                input=json.dumps(p, ensure_ascii=False), text=True,
+                capture_output=True, timeout=float(os.environ.get("HARNESS_ROUTER_STOP_TIMEOUT","2")),
+                cwd=str(Path(str(p.get("cwd") or os.getcwd()))), env=os.environ.copy(), check=False,
+            )
+            if result.stdout.strip():
+                emit(json.loads(result.stdout.strip().splitlines()[0]))
+                return 0
+        except (OSError, ValueError, subprocess.SubprocessError, json.JSONDecodeError):
+            pass
+        emit({}); return 0
     emit({}); return 0
 
 if __name__=="__main__": raise SystemExit(main())
