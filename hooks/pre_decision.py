@@ -369,6 +369,7 @@ def main() -> int:
         "cache_hit": bool(result.get("cache_hit")),
         "duration_ms": duration_ms,
         "principal_variation": result.get("principal_variation", []),
+        "provider_requests": int(result.get("provider_requests", 0) or 0),
     }
     (decision_dir / f"{session}.decision.json").write_text(
         json.dumps(record, separators=(",", ":"), ensure_ascii=False),
@@ -384,6 +385,7 @@ def main() -> int:
         "cache_hit": record["cache_hit"],
         "duration_ms": duration_ms,
         "state_key": state_key,
+        "provider_requests": int(result.get("provider_requests", 0) or 0),
     }, separators=(",", ":")))
     return 0
 
