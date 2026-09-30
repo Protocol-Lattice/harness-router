@@ -72,52 +72,65 @@ Harness Router decides **which tool should run next**.
 
 ## One router. Two ways in.
 
-### 1. Hook — precompute the next decision
+### 1. Hook — own the next tool decision
 
-The hook integrations use the harness lifecycle to keep a **state → next-tool**
-decision ready for the next model step.
-
-```text
-user prompt / model invocation
-            |
-            v
-      Harness Router
-            |
-            v
-      model chooses tool
-            |
-            v
-       execute tool
-            |
-            v
-        PostToolUse
-            |
-            v
-      Harness Router
-      precompute next
-            |
-            v
-      next model step
-```
-
-`PreToolUse` is now a **local validation gate**, not a second Jev call. When the
-model selects the same tool that Harness Router precomputed, the hook returns
-immediately. When a different high-confidence tool was precomputed, the hook
-can deny once and ask the harness to re-plan.
-
-This avoids paying for a second routing request immediately before execution:
+Hook integrations keep a **state → next-tool** decision ready before the next
+model step. The hand-off is host-specific:
 
 ```text
-PostToolUse  →  Jev/OpenRouter  →  cache[next_tool]
-PreToolUse   →  local cache      →  allow / re-plan
+                         Harness Router
+                              |
+                         next tool
+                              |
+        +---------------------+----------------------+
+        |                     |                      |
+      Codex                 Claude               Antigravity
+        |                     |                      |
+  PostToolUse           PostToolUse           PreInvocation
+  context injection     context injection     context injection
+        |                     |                      |
+        +---------------------+----------------------+
+                              |
+                         model step
+                              |
+                         tool execution
+                              |
+                         PostToolUse
+                              |
+                              +----> Harness Router
 ```
 
-For Antigravity, `PreInvocation` is also used as the native before-model
-checkpoint, while `PostToolUse` refreshes the state after tool execution.
+There are two enforcement levels:
 
-The hooks are **fail-open**: routing failures never replace the harness's normal
-execution path.
+**Direct tool-surface control.** ohmypi exposes a runtime setActiveTools() API,
+so the extension narrows the active tool set to the Router-selected tool before
+the next provider request. The model can therefore generate arguments for the
+Router-selected tool without choosing among the full registry. The extension
+restores the original active set, observes the result, and routes the next state.
 
+**Hook enforcement/context.** Codex and Claude Code do not expose an equivalent
+project hook that renames the model's already-generated tool choice into another
+tool. Their adapters therefore precompute after each tool result, inject the next
+Router decision into the next model context, and keep PreToolUse as a local
+safety/consistency gate. Antigravity uses its native PreInvocation checkpoint
+for the same purpose.
+
+This means Harness Router owns the **tool-selection policy**, while the adapter
+uses the strongest control point the host exposes. It does not claim to replace
+the host's internal model sampler through hooks alone.
+
+```text
+PostToolUse  →  Router(cache/Jev/MCTS)  →  next decision
+                                      |
+                    +-----------------+------------------+
+                    |                                    |
+             set active tool                     inject / gate
+                    |                                    |
+                 ohmypi                       Codex / Claude / Antigravity
+```
+
+The hooks are **fail-open**: routing failures never bypass the harness's normal
+permissions or execution policy.
 ### Hook decision latency
 
 All five hook integrations use the same `harness-router-mcp` routing core, so the decision itself is not a different model per harness. The latest recorded ordinary-routing benchmark measured the shared `route` decision at **404.5 ms mean / 332 ms median / 718 ms p95** over 24 choices. The 4,096-simulation `route_mcts` benchmark measured **388 ms mean / 372.5 ms median / 545 ms p95**.
