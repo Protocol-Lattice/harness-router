@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Antigravity PreToolUse: validate the precomputed next-tool decision locally."""
 from __future__ import annotations
-import argparse, hashlib, json, os, sys
+import argparse, hashlib, json, os, subprocess, sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,6 +16,23 @@ def main(argv=None)->int:
     if not isinstance(p,dict):
         print("{}"); return 0
     if args.stop:
+        conversation=str(p.get("conversationId") or "default")
+        try:
+            result=subprocess.run(
+                [sys.executable, str(ROOT/"hooks"/"stop.py")],
+                input=json.dumps({
+                    "cwd": str(ROOT),
+                    "session_id": conversation,
+                    "stop_hook_active": bool(p.get("stopHookActive", False)),
+                }),
+                text=True, capture_output=True, timeout=2, check=False,
+            )
+            output=result.stdout.strip()
+            if output:
+                print(output.splitlines()[0])
+                return 0
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
         print("{}"); return 0
     call=p.get("toolCall") if isinstance(p.get("toolCall"),dict) else {}
     current=str(call.get("name") or "").strip()
