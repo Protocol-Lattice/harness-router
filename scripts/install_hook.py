@@ -381,6 +381,14 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
             ignore_entries.append(".claude/settings.local.json")
 
 
+    # Install the shared pre-decision primitive for every selected provider.
+    for relative in COMMON_ASSETS:
+        data = asset(relative, source, ref)
+        ast.parse(data, filename=relative, feature_version=(3, 11))
+        target = root / relative
+        check_target(root, target)
+        planned[target] = data
+
     ignore = root / ".gitignore"
     check_target(root, ignore)
     old_ignore = ignore.read_bytes() if ignore.exists() else b""
