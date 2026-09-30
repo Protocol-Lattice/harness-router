@@ -1,373 +1,106 @@
 #!/usr/bin/env python3
-"""DeepSeek Harness command hook for Harness Router.
-
-DeepSeek Harness exposes tools/pre-execute natively. The supported
-@deepseek-ai/dsh-hooks-codex bridge maps Codex PreToolUse command hooks onto
-that interception point, so this adapter keeps the existing routing protocol.
-"""
-
+"""DeepSeek Harness hook: precompute after tools, validate before tools."""
 from __future__ import annotations
-
-import json
-from datetime import datetime, timezone
-import os
-import re
-import shlex
-import shutil
-import socket
-import subprocess
-import sys
-import tempfile
-import time
-from difflib import SequenceMatcher
+from datetime import UTC, datetime
+import hashlib, json, os, subprocess, sys
 from pathlib import Path
-from typing import Any
 
-DEFAULT_TIMEOUT = 4.0
-MAX_CANDIDATES = 8
+def emit(value: dict) -> None:
+    print(json.dumps(value, separators=(",", ":"), ensure_ascii=False))
 
+def root() -> Path:
+    return Path(os.getcwd()).resolve()
 
-def emit(payload: dict[str, Any]) -> None:
-    print(json.dumps(payload, separators=(",", ":"), ensure_ascii=False))
-
-
-def allow() -> None:
-    emit({"hookSpecificOutput": {"hookEventName": "PreToolUse"}})
-
-
-def deny(selected: str, current: str, confidence: float | None, count: int) -> None:
-    confidence_text = f" at confidence {confidence:.3f}" if confidence is not None else ""
-    emit({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": (
-                f"harness-router selected {selected!r}{confidence_text} instead of "
-                f"the pending DeepSeek tool {current!r}"
-            ),
-            "additionalContext": (
-                f"Harness Router evaluated {count} similar tools and recommends "
-                f"{selected!r} instead of {current!r}. Re-plan once and preserve "
-                "the original user goal."
-            ),
-        }
-    })
-
-
-def load_tools(cwd: Path) -> list[dict[str, Any]]:
-    raw_json = os.environ.get("HARNESS_ROUTER_DEEPSEEK_TOOLS_JSON", "").strip()
-    raw_file = os.environ.get("HARNESS_ROUTER_DEEPSEEK_TOOLS_FILE", "").strip()
-    values: Any
-    if raw_json:
-        try:
-            values = json.loads(raw_json)
-        except json.JSONDecodeError:
-            return []
-    elif raw_file:
-        try:
-            values = json.loads(Path(raw_file).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
-    else:
-        try:
-            values = json.loads(
-                (cwd / ".dsh" / "harness-router-tools.json").read_text(encoding="utf-8")
-            )
-        except (OSError, json.JSONDecodeError):
-            return []
-
-    if isinstance(values, dict):
-        values = values.get("tools", [])
-    if not isinstance(values, list):
-        return []
-
-    result: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for item in values:
-        if not isinstance(item, dict):
-            continue
-        name = str(item.get("name", "")).strip()
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        result.append({
-            "name": name,
-            "description": str(item.get("description", "")).strip(),
-            "category": item.get("category"),
-            "risk": str(item.get("risk", "medium")).lower(),
-        })
-    return result
-
-
-def tokens(value: str) -> set[str]:
-    value = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", value)
-    return {
-        token.lower()
-        for token in re.split(r"[^a-zA-Z0-9]+", value)
-        if len(token) >= 2
-    }
-
-
-def similarity(candidate: dict[str, Any], current: dict[str, Any]) -> float:
-    candidate_name = str(candidate["name"])
-    current_name = str(current["name"])
-    score = SequenceMatcher(None, current_name.lower(), candidate_name.lower()).ratio() * 10
-    score += len(tokens(candidate_name) & tokens(current_name)) * 4
-    score += len(
-        tokens(str(candidate.get("description", "")))
-        & tokens(str(current.get("description", "")))
-    ) * 1.5
-    if candidate.get("category") and candidate.get("category") == current.get("category"):
-        score += 2
-    return score
-
-
-def shortlist(tools: list[dict[str, Any]], current: str) -> list[dict[str, Any]]:
-    current_tool = next((tool for tool in tools if tool["name"] == current), None)
-    if current_tool is None:
-        return []
-    others = [
-        tool for tool in tools
-        if tool["name"] != current and "harness-router" not in tool["name"].lower()
-    ]
-    others.sort(key=lambda tool: similarity(tool, current_tool), reverse=True)
-    return [current_tool, *others[: MAX_CANDIDATES - 1]]
-
-
-def extract_result(response: dict[str, Any]) -> dict[str, Any]:
-    structured = response.get("structuredContent")
-    if isinstance(structured, dict):
-        return structured
-    for item in response.get("content", []):
-        if not isinstance(item, dict) or item.get("type") != "text":
-            continue
-        text = item.get("text")
-        if not isinstance(text, str):
-            continue
-        try:
-            value = json.loads(text)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, dict):
-            return value
-    return {}
-
-
-def route(
-    binary: str | None,
-    cwd: str | Path,
-    goal: str,
-    observation: str,
-    current: str,
-    candidates: list[dict[str, Any]],
-) -> tuple[dict[str, Any], str]:
-    timeout = float(os.environ.get("HARNESS_ROUTER_PRETOOL_TIMEOUT", "4.0"))
-    if timeout <= 0:
-        return {}, "route"
-    daemon_result = _route_via_daemon(goal, observation, candidates, timeout)
-    if daemon_result is not None:
-        return daemon_result, "route"
-    if not binary:
-        return {}, "route"
-    tools_json = json.dumps(
-        [
-            {key: tool.get(key) for key in ("name", "description", "category", "risk")}
-            for tool in candidates
-        ],
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+def tools_for(cwd: Path) -> list[dict]:
+    path = cwd / ".dsh" / "harness-router-tools.json"
     try:
-        proc = subprocess.run(
-            [
-                binary,
-                "route",
-                "--mode", "jev_only",
-                "--verbose",
-                "--no-cache",
-                "--goal", goal,
-                "--observation", observation,
-                "--tools-json", tools_json,
-            ],
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=os.environ.copy(),
-            check=False,
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    tools = value.get("tools", value) if isinstance(value, dict) else value
+    return tools if isinstance(tools, list) else []
+
+def load_decision(cwd: Path, session: str) -> dict:
+    path = cwd / ".harness-router" / "sessions" / f"{session}.decision.json"
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+def fresh(value: dict) -> bool:
+    try:
+        generated = datetime.fromisoformat(str(value.get("generated_at","")).replace("Z","+00:00"))
+        return (datetime.now(UTC)-generated).total_seconds() <= float(
+            os.environ.get("HARNESS_ROUTER_PREDECISION_TTL","30")
         )
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return {}, "route"
-    if proc.returncode != 0:
-        return {}, "route"
-    try:
-        result = json.loads(proc.stdout.strip())
-    except json.JSONDecodeError:
-        return {}, "route"
-    if not isinstance(result, dict) or result.get("provider_requests", 0) < 1:
-        return {}, "route"
-    return result, "route"
+    except (TypeError, ValueError):
+        return False
 
-
-def _route_via_daemon(
-    goal: str,
-    observation: str,
-    candidates: list[dict[str, Any]],
-    timeout: float,
-) -> dict[str, Any] | None:
-    """Use an existing local router daemon before starting the CLI subprocess."""
-    if os.name == "nt" or os.environ.get("HARNESS_ROUTER_NO_DAEMON") == "1":
-        return None
-    configured = os.environ.get("HARNESS_ROUTER_SOCKET")
-    if configured:
-        path = configured
-    else:
-        uid = str(os.getuid()) if hasattr(os, "getuid") else str(os.getpid())
-        path = str(Path(tempfile.gettempdir()) / f"harness-router-{uid}.sock")
-    request = {
-        "goal": goal,
-        "observation": observation,
-        "last_action": None,
-        "tools": [
-            {key: tool.get(key) for key in ("name", "description", "category", "risk")}
-            for tool in candidates
-        ],
-        "mode": "jev_only",
-        "direct_threshold": 0.85,
-        "fallback_threshold": 0.60,
-        "hierarchical_threshold": 24,
-        "route_cache_size": 0,
-    }
-    wire = (json.dumps(request, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
-    try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            client.settimeout(timeout)
-            client.connect(path)
-            client.sendall(wire)
-            response = bytearray()
-            while len(response) <= 64 * 1024:
-                chunk = client.recv(4096)
-                if not chunk:
-                    break
-                response.extend(chunk)
-                if b"\n" in chunk:
-                    break
-        result = json.loads(response.split(b"\n", 1)[0])
-    except (OSError, ValueError, json.JSONDecodeError):
-        return None
-    if not isinstance(result, dict) or result.get("provider_requests", 0) < 1:
-        return None
-    return result
-
-
-def _run_hook() -> int:
-    try:
-        payload = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        allow()
-        return 0
-
-    if payload.get("hook_event_name") != "PreToolUse":
-        allow()
-        return 0
-
-    current = str(payload.get("tool_name", "")).strip()
-    if not current or "harness-router" in current.lower():
-        allow()
-        return 0
-
+def precompute(payload: dict) -> int:
     cwd = Path(str(payload.get("cwd") or os.getcwd()))
-    tools = load_tools(cwd)
-    if len(tools) < 2 or not any(tool["name"] == current for tool in tools):
-        allow()
-        return 0
-
-    candidates = shortlist(tools, current)
-    if len(candidates) < 2:
-        allow()
-        return 0
-
-    binary = os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("harness-router")
-    goal = str(payload.get("goal") or "Choose the best next DeepSeek tool for the current task.")[:1600]
-    observation = (
-        f"DeepSeek is about to call {current!r}. "
-        f"tool_input={json.dumps(payload.get('tool_input'), ensure_ascii=False)[:600]}"
-    )[:900]
-    started = time.monotonic()
+    session = str(payload.get("session_id") or "default")
+    tools = payload.get("tools")
+    if not isinstance(tools, list):
+        tools = tools_for(cwd)
+    decision = load_decision(cwd, session)
+    goal = str(payload.get("goal") or decision.get("goal") or "").strip()[:1600]
+    if not goal or len(tools) < 2:
+        emit({}); return 0
+    request = {
+        "harness":"deepseek", "hook":"PostToolUse", "cwd":str(cwd),
+        "session_id":session,
+        "decision_id":str(payload.get("step_idx") or payload.get("turn_id") or ""),
+        "goal":goal,
+        "observation":str(payload.get("tool_response") or payload.get("tool_result") or payload.get("error") or "")[:4000],
+        "last_action":str(payload.get("tool_name") or "") or None,
+        "tools":tools,
+    }
     try:
-        result, mode = route(
-            binary=binary,
-            cwd=cwd,
-            goal=goal,
-            observation=observation,
-            current=current,
-            candidates=candidates,
-        )
-    except (OSError, ValueError, RuntimeError, TimeoutError, subprocess.SubprocessError):
-        allow()
-        return 0
+        p=subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parents[2]/"hooks"/"post_tool_use.py")],
+            input=json.dumps(request,ensure_ascii=False), text=True, capture_output=True,
+            timeout=float(os.environ.get("HARNESS_ROUTER_POSTTOOL_TIMEOUT","4")),
+            cwd=str(cwd), env=os.environ.copy(), check=False)
+        if p.stderr: print(p.stderr.rstrip(),file=sys.stderr)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    emit({}); return 0
 
-    elapsed_ms = (time.monotonic() - started) * 1000
-    selected = result.get("tool")
-    if result.get("fallback") or not isinstance(selected, str) or not selected or selected == current:
-        allow()
-        return 0
-
-    raw_confidence = result.get("confidence")
-    confidence = float(raw_confidence) if isinstance(raw_confidence, (int, float)) else None
-    emit({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": (
-                f"harness-router ({mode}) selected {selected!r} instead of {current!r}"
-            ),
-            "additionalContext": (
-                f"Harness Router evaluated {len(candidates)} similar tools; "
-                f"decision latency: {elapsed_ms:.2f} ms."
-            ),
-        }
-    })
+def validate(payload: dict) -> int:
+    cwd=Path(str(payload.get("cwd") or os.getcwd()))
+    session=str(payload.get("session_id") or "default")
+    current=str(payload.get("tool_name") or "").strip()
+    if not current or "harness-router" in current.lower().replace("-","_"):
+        emit({"hookSpecificOutput":{"hookEventName":"PreToolUse"}}); return 0
+    decision=load_decision(cwd,session)
+    selected=decision.get("tool")
+    try:
+        confidence=float(decision.get("confidence"))
+        threshold=float(os.environ.get("HARNESS_ROUTER_PREDECISION_THRESHOLD","0.85"))
+    except (TypeError,ValueError):
+        emit({"hookSpecificOutput":{"hookEventName":"PreToolUse"}}); return 0
+    if not fresh(decision) or not isinstance(selected,str) or not selected or selected==current or confidence<threshold:
+        emit({"hookSpecificOutput":{"hookEventName":"PreToolUse"}}); return 0
+    marker=cwd/".harness-router"/"sessions"/f"{hashlib.sha256(f'{session}:{decision.get('state_key','')}:{current}'.encode()).hexdigest()}.rerouted"
+    try:
+        marker.parent.mkdir(parents=True,exist_ok=True)
+        fd=os.open(marker,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600); os.close(fd)
+    except FileExistsError:
+        emit({"hookSpecificOutput":{"hookEventName":"PreToolUse"}}); return 0
+    except OSError:
+        emit({"hookSpecificOutput":{"hookEventName":"PreToolUse"}}); return 0
+    reason=f"Harness Router precomputed {selected!r} at confidence {confidence:.3f}, but DeepSeek selected {current!r}. Re-plan once."
+    emit({"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":reason,"additionalContext":reason}})
     return 0
 
+def main()->int:
+    try:p=json.load(sys.stdin)
+    except (OSError,ValueError): p={}
+    if not isinstance(p,dict): emit({}); return 0
+    event=str(p.get("hook_event_name") or "")
+    if event=="PostToolUse": return precompute(p)
+    if event=="PreToolUse": return validate(p)
+    emit({}); return 0
 
-def main() -> int:
-    started = time.monotonic()
-    started_at = datetime.now(timezone.utc)
-    try:
-        return _run_hook()
-    finally:
-        event = {
-            "event": "harness_router.hook_timing",
-            "hook": "deepseek",
-            "started_at": started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-            "duration_ms": round((time.monotonic() - started) * 1000, 3),
-        }
-        print(json.dumps(event, separators=(",", ":")), file=sys.stderr)
-        _append_hook_timing(event, _repo_root_for_logs())
-
-
-def _repo_root_for_logs() -> Path:
-    cwd = Path.cwd()
-    try:
-        resolved = cwd.resolve()
-        for parent in (resolved, *resolved.parents):
-            if (parent / ".git").exists():
-                return parent
-    except OSError:
-        pass
-    return cwd
-
-
-def _append_hook_timing(event: dict[str, Any], root: Path) -> None:
-    try:
-        path = root / "hook-timings.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as log_file:
-            log_file.write(json.dumps(event, separators=(",", ":")) + "\n")
-    except OSError:
-        pass
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__=="__main__": raise SystemExit(main())
