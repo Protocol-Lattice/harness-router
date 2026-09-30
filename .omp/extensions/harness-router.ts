@@ -185,11 +185,25 @@ async function precompute(
     confidence >= threshold
   ) {
     state.nextTool = selected;
-    await pi.setActiveTools([selected]);
-    state.enforcing = true;
+    try {
+      await pi.setActiveTools([selected]);
+      state.enforcing = true;
+    } catch {
+      state.nextTool = "";
+      state.enforcing = false;
+      try {
+        await pi.setActiveTools([...baselineToolNames(pi, state)]);
+      } catch {
+        // Fail open: keep the host's current tool policy intact.
+      }
+    }
   } else {
     state.nextTool = "";
-    await restoreBaseline(pi, state);
+    try {
+      await restoreBaseline(pi, state);
+    } catch {
+      state.enforcing = false;
+    }
   }
 }
 
@@ -202,12 +216,6 @@ export default function harnessRouter(pi: ExtensionAPI): void {
     enforcing: false,
     preparedPrompt: "",
   };
-
-
-
-
-
-
 
   pi.on("session_start", async (_event, ctx) => {
     await resetSessionState(pi, state, latestUser(ctx).text);
