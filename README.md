@@ -1,7 +1,5 @@
-# Harness Router
-
 <p align="center">
-  <img src="./assets/harness-router-logo.png" width="520" alt="Harness Router">
+  <img src="./assets/harness-router-logo.png" alt="Harness Router">
 </p>
 
 **Choose the next tool inside an existing agent loop.**
