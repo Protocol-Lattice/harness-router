@@ -104,6 +104,8 @@ async def _handle(
             float(request.get("fallback_threshold", 0.60)),
             int(request.get("hierarchical_threshold", 24)),
             int(request.get("route_cache_size", 128)),
+            int(request.get("obvious_cache_size", 256)),
+            float(request.get("obvious_cache_ttl_seconds", 60.0)),
         )
         router = routers.get(key)
         if router is None:
