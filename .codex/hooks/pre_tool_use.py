@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Codex PreToolUse bridge for harness-router.
 
-Loads the generated tool catalog produced by discover_tools.py, locally
-shortlists tools similar to the pending call, and sends only that compact
-candidate set to the native harness-router MCP server. Failures are deliberately fail-open.
+Loads the generated tool catalog produced by discover_tools.py and validates
+the pending call against the shared precomputed next-tool decision. The normal
+PreToolUse path is local-only: it must not trigger another Jev/OpenRouter decision.
 """
 
 from __future__ import annotations
@@ -596,73 +596,21 @@ def _run_hook(hook_stats: dict[str, Any] | None = None) -> int:
             _allow()
             return 0
 
-    binary = _router_binary()
-    decision_started_at = datetime.now(timezone.utc)
-    decision_started = time.monotonic()
-    decision_outcome = "error"
-    routing_mode: str | None = None
-    selected: str | None = None
-    try:
-        result, routing_mode = _route_hybrid(
-            binary=binary,
-            cwd=cwd,
-            goal=goal,
-            observation=observation,
-            current=current,
-            candidates=candidates,
+    # No second Jev/OpenRouter call here. The routing decision belongs to
+    # UserPromptSubmit/PostToolUse; PreToolUse only validates that state locally.
+    if hook_stats is not None:
+        hook_stats.update(
+            {
+                "decision_started_at": None,
+                "decision_duration_ms": 0.0,
+                "decision_outcome": "predecision_miss",
+                "routing_mode": "predecision",
+                "selected_tool": None,
+            }
         )
-        selected_value = result.get("tool")
-        selected = selected_value if isinstance(selected_value, str) else None
-        if result.get("provider_requests", 0) == 0 and result.get("tool"):
-            decision_outcome = "cache_hit"
-        else:
-            decision_outcome = (
-                "recommendation"
-                if not result.get("fallback") and selected and selected != current
-                else "fallback"
-            )
-    except (OSError, subprocess.SubprocessError, TimeoutError, RuntimeError, ValueError):
-        _allow()
-        return 0
-    finally:
-        if hook_stats is not None:
-            hook_stats.update(
-                {
-                    "decision_started_at": decision_started_at.isoformat(
-                        timespec="milliseconds"
-                    ).replace("+00:00", "Z"),
-                    "decision_duration_ms": round(
-                        (time.monotonic() - decision_started) * 1000, 3
-                    ),
-                    "decision_outcome": decision_outcome,
-                    "routing_mode": routing_mode,
-                    "selected_tool": selected,
-                }
-            )
+    _allow()
+    return 0
 
-    selected = result.get("tool")
-    if (
-        result.get("fallback")
-        or not isinstance(selected, str)
-        or not selected
-        or selected == current
-    ):
-        _allow()
-        return 0
-
-    confidence_value = result.get("confidence")
-    confidence = (
-        float(confidence_value)
-        if isinstance(confidence_value, (int, float))
-        else None
-    )
-    _deny(
-        selected=selected,
-        current=current,
-        confidence=confidence,
-        tool_count=len(candidates),
-        routing_mode=routing_mode,
-    )
     return 0
 
 
