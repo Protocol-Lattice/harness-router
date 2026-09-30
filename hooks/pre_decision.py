@@ -157,14 +157,24 @@ def route(
         pass
 
     binary = os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("harness-router")
-    if not binary:
-        return {}
+    module_env = os.environ.copy()
+    source_root = Path(__file__).resolve().parents[1] / "src"
+    if source_root.is_dir():
+        current_pythonpath = module_env.get("PYTHONPATH", "")
+        module_env["PYTHONPATH"] = (
+            str(source_root)
+            if not current_pythonpath
+            else str(source_root) + os.pathsep + current_pythonpath
+        )
+    command = (
+        [binary, "route", "--no-daemon"]
+        if binary
+        else [sys.executable, "-m", "harness_router.cli", "route", "--no-daemon"]
+    )
     try:
         p = subprocess.run(
             [
-                binary,
-                "route",
-                "--no-daemon",
+                *command,
                 "--mode", "jev_only",
                 "--goal", goal[:1600],
                 "--observation", observation[:4000],
@@ -174,12 +184,13 @@ def route(
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=module_env,
             check=False,
         )
         if p.returncode == 0:
             result = json.loads(p.stdout.strip())
             return result if isinstance(result, dict) else {}
-    except (OSError, ValueError, subprocess.subprocess.SubprocessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         pass
     return {}
 
