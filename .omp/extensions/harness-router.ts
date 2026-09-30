@@ -12,6 +12,9 @@ type RouterState = {
   goal: string;
   nextTool: string;
   redirected: boolean;
+  baselineTools: string[];
+  enforcing: boolean;
+  preparedPrompt: string;
 };
 
 function isRouter(name: string): boolean {
@@ -33,9 +36,19 @@ function latestUser(ctx: ExtensionContext): { id: string; text: string } {
   return { id: "", text: "" };
 }
 
-function liveTools(pi: ExtensionAPI) {
-  const active = new Set(pi.getActiveTools());
+function liveTools(pi: ExtensionAPI, baselineTools: string[]) {
+  const active = new Set(baselineTools.length ? baselineTools : pi.getActiveTools());
   return pi.getAllTools().filter((tool) => active.has(tool.name) && !isRouter(tool.name));
+}
+
+function baselineToolNames(pi: ExtensionAPI, state: RouterState): string[] {
+  return state.baselineTools.length ? [...state.baselineTools] : pi.getActiveTools();
+}
+
+async function restoreBaseline(pi: ExtensionAPI, state: RouterState): Promise<void> {
+  if (!state.baselineTools.length) return;
+  await pi.setActiveTools([...state.baselineTools]);
+  state.enforcing = false;
 }
 
 async function atomicJSON(path: string, value: unknown): Promise<void> {
@@ -49,11 +62,15 @@ async function atomicJSON(path: string, value: unknown): Promise<void> {
   }
 }
 
-async function publishCatalog(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
+async function publishCatalog(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  state: RouterState,
+): Promise<void> {
   try {
     const sessionId = ctx.sessionManager.getSessionId();
     const key = createHash("sha256").update(sessionId).digest("hex");
-    const tools = liveTools(pi);
+    const tools = liveTools(pi, baselineToolNames(pi, state));
     const catalog = { provider: "ohmypi", session_id: sessionId,
       generated_at: new Date().toISOString(), tools };
     const root = join(ctx.cwd, ".omp");
@@ -119,7 +136,7 @@ async function precompute(
   observation: unknown,
   lastAction: string | null,
 ): Promise<void> {
-  const tools = liveTools(pi);
+  const tools = liveTools(pi, baselineToolNames(pi, state));
   if (!state.goal || tools.length < 2) return;
   const result = await runRouter({
     harness: "ohmypi",
@@ -133,19 +150,46 @@ async function precompute(
     last_action: lastAction,
     tools,
   }, ctx.cwd);
-  if (typeof result.tool === "string" && result.tool && !result.fallback) {
-    state.nextTool = result.tool;
+  const selected = typeof result.tool === "string" ? result.tool.trim() : "";
+  const confidence = Number(result.confidence);
+  const threshold = Number(
+    process.env.HARNESS_ROUTER_PREDECISION_THRESHOLD ?? "0.85",
+  );
+
+  if (
+    selected &&
+    !result.fallback &&
+    baselineToolNames(pi, state).includes(selected) &&
+    Number.isFinite(confidence) &&
+    confidence >= threshold
+  ) {
+    state.nextTool = selected;
+    await pi.setActiveTools([selected]);
+    state.enforcing = true;
+  } else {
+    state.nextTool = "";
+    await restoreBaseline(pi, state);
   }
 }
 
 export default function harnessRouter(pi: ExtensionAPI): void {
-  const state: RouterState = { goal: "", nextTool: "", redirected: false };
+  const state: RouterState = {
+    goal: "",
+    nextTool: "",
+    redirected: false,
+    baselineTools: pi.getActiveTools(),
+    enforcing: false,
+    preparedPrompt: "",
+  };
 
   pi.on("session_start", async (_event, ctx) => {
     state.goal = latestUser(ctx).text;
     state.nextTool = "";
     state.redirected = false;
-    await publishCatalog(pi, ctx);
+    state.enforcing = false;
+    state.preparedPrompt = "";
+    state.baselineTools = pi.getActiveTools();
+    await publishCatalog(pi, ctx, state);
   });
 
   pi.on("session_switch", async (_event, ctx) => {
@@ -163,11 +207,30 @@ export default function harnessRouter(pi: ExtensionAPI): void {
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
-    state.goal = event.prompt.slice(0, 1600);
+    const prompt = event.prompt.slice(0, 1600);
+
+    // setActiveTools() can cause policy preparation to repeat. Preserve the
+    // original active set and avoid routing twice for the same prompt.
+    if (state.preparedPrompt === prompt && state.enforcing && state.nextTool) {
+      return;
+    }
+
+    if (state.enforcing) {
+      try {
+        await restoreBaseline(pi, state);
+      } catch {
+        state.enforcing = false;
+      }
+    }
+
+    state.goal = prompt;
     state.nextTool = "";
     state.redirected = false;
-    await publishCatalog(pi, ctx);
-    await precompute(state, pi, ctx, "Initial model decision", null);
+    state.enforcing = false;
+    state.preparedPrompt = prompt;
+    state.baselineTools = pi.getActiveTools();
+    await publishCatalog(pi, ctx, state);
+    await precompute(state, pi, ctx, "Initial decision state", null);
   });
 
   pi.on("tool_result", async (event, ctx) => {
@@ -188,16 +251,16 @@ export default function harnessRouter(pi: ExtensionAPI): void {
     }
   });
 
-  pi.on("tool_call", async (event, ctx) => {
+  pi.on("tool_call", async (event) => {
     try {
       if (isRouter(event.toolName)) return;
       const expected = state.nextTool;
-      if (!expected || expected === event.toolName || state.redirected) return;
+      if (!expected || expected === event.toolName) return;
 
-      state.redirected = true;
       const reason = (
-        `Harness Router precomputed ${expected} as the next tool, but the model ` +
-        `selected ${event.toolName}. Re-plan once using the current goal.`
+        `Harness Router selected ${expected} as the next tool and restricted the active ` +
+        `tool set to that choice, but the runtime requested ${event.toolName}. Refresh the ` +
+        `current router decision before executing another tool.`
       );
       return { block: true, reason };
     } catch {
