@@ -1,8 +1,8 @@
 {
-  "description": "Route Codex tool calls through harness-router with a per-session tool registry.",
   "hooks": {
     "UserPromptSubmit": [
       {
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
