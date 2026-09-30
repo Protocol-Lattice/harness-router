@@ -339,6 +339,12 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
                 else (json.dumps(merged, indent=2, ensure_ascii=False) + "\n").encode()
             )
             planned[patch_target] = DEEPSEEK_PATCH.encode()
+            for relative in COMMON_ASSETS:
+                data = asset(relative, source, ref)
+                ast.parse(data, filename=relative, feature_version=(3, 11))
+                target = root / relative
+                check_target(root, target)
+                planned[target] = data
             ignore_entries.extend([
                 ".dsh/harness-router-tools.json",
                 ".dsh/harness-router.patch.yml.harness-router.bak",
@@ -356,6 +362,12 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
                 else:
                     data.decode("utf-8")
                 planned[root / relative] = data
+            for relative in COMMON_ASSETS:
+                data = asset(relative, source, ref)
+                ast.parse(data, filename=relative, feature_version=(3, 11))
+                target = root / relative
+                check_target(root, target)
+                planned[target] = data
             ignore_entries.extend(
                 [".omp/harness-router-tools.json", ".omp/harness-router/", ".omp/node_modules/"]
             )
