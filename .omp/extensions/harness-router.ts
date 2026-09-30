@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const bridge = fileURLToPath(new URL("../../hooks/pre_decision.py", import.meta.url));
+const stopBridge = fileURLToPath(new URL("../../hooks/stop.py", import.meta.url));
 
 type RouterState = {
   goal: string;
@@ -150,6 +151,43 @@ function runRouter(
   });
 }
 
+function runStopRouter(payload: Record<string, unknown>, cwd: string): Promise<Record<string, unknown>> {
+  const seconds = Number(process.env.HARNESS_ROUTER_STOP_TIMEOUT ?? "2");
+  if (!Number.isFinite(seconds) || seconds <= 0) return Promise.resolve({});
+  return new Promise((resolve) => {
+    const child = spawn(process.env.HARNESS_ROUTER_PYTHON_BIN || "python3", [stopBridge], {
+      cwd, stdio: ["pipe", "pipe", "ignore"],
+    });
+    let output = "";
+    let settled = false;
+    const finish = (value: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish({}), seconds * 1000);
+    child.on("error", () => finish({}));
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => { output += chunk; });
+    child.on("close", (code) => {
+      if (code !== 0) return finish({});
+      try {
+        const value = JSON.parse(output.trim().split("\n", 1)[0]);
+        finish(value && typeof value === "object" && !Array.isArray(value) ? value : {});
+      } catch {
+        finish({});
+      }
+    });
+    try {
+      child.stdin.end(JSON.stringify(payload));
+    } catch {
+      finish({});
+    }
+  });
+}
+
 async function precompute(
   state: RouterState,
   pi: ExtensionAPI,
@@ -257,6 +295,27 @@ export default function harnessRouter(pi: ExtensionAPI): void {
     state.baselineTools = pi.getActiveTools();
     await publishCatalog(pi, ctx, state);
     await precompute(state, pi, ctx, "Initial decision state", null);
+  });
+
+  pi.on("session_stop", async (_event, ctx) => {
+    try {
+      const result = await runStopRouter({
+        harness: "ohmypi",
+        hook: "Stop",
+        cwd: ctx.cwd,
+        session_id: ctx.sessionManager.getSessionId(),
+        stop_hook_active: false,
+      }, ctx.cwd);
+      if (result.continue === true) {
+        const reason = typeof result.reason === "string"
+          ? result.reason
+          : "Harness Router requested another agent step.";
+        return { decision: "block", reason };
+      }
+    } catch {
+      // Stop routing is fail-open: allow the harness to finish normally.
+    }
+    return undefined;
   });
 
   pi.on("tool_result", async (event, ctx) => {
