@@ -51,6 +51,27 @@ async function restoreBaseline(pi: ExtensionAPI, state: RouterState): Promise<vo
   state.enforcing = false;
 }
 
+async function resetSessionState(
+  pi: ExtensionAPI,
+  state: RouterState,
+  goal: string,
+): Promise<void> {
+  if (state.enforcing && state.baselineTools.length) {
+    try {
+      await pi.setActiveTools([...state.baselineTools]);
+    } catch {
+      // Keep the runtime fail-open if restoration is unavailable.
+    }
+  }
+
+  state.goal = goal;
+  state.nextTool = "";
+  state.redirected = false;
+  state.enforcing = false;
+  state.preparedPrompt = "";
+  state.baselineTools = pi.getActiveTools();
+}
+
 async function atomicJSON(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${Date.now()}.tmp`;
@@ -182,33 +203,24 @@ export default function harnessRouter(pi: ExtensionAPI): void {
     preparedPrompt: "",
   };
 
+
+
+
+
+
+
   pi.on("session_start", async (_event, ctx) => {
-    state.goal = latestUser(ctx).text;
-    state.nextTool = "";
-    state.redirected = false;
-    state.enforcing = false;
-    state.preparedPrompt = "";
-    state.baselineTools = pi.getActiveTools();
+    await resetSessionState(pi, state, latestUser(ctx).text);
     await publishCatalog(pi, ctx, state);
   });
 
   pi.on("session_switch", async (_event, ctx) => {
-    state.goal = latestUser(ctx).text;
-    state.nextTool = "";
-    state.redirected = false;
-    state.enforcing = false;
-    state.preparedPrompt = "";
-    state.baselineTools = pi.getActiveTools();
+    await resetSessionState(pi, state, latestUser(ctx).text);
     await publishCatalog(pi, ctx, state);
   });
 
   pi.on("session_branch", async (_event, ctx) => {
-    state.goal = latestUser(ctx).text;
-    state.nextTool = "";
-    state.redirected = false;
-    state.enforcing = false;
-    state.preparedPrompt = "";
-    state.baselineTools = pi.getActiveTools();
+    await resetSessionState(pi, state, latestUser(ctx).text);
     await publishCatalog(pi, ctx, state);
   });
 
