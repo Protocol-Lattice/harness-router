@@ -167,10 +167,12 @@ def route(
             else str(source_root) + os.pathsep + current_pythonpath
         )
     command = (
-        [binary, "route", "--no-daemon"]
-        if binary
-        else [sys.executable, "-m", "harness_router.cli", "route", "--no-daemon"]
+        [sys.executable, "-m", "harness_router.cli", "route", "--no-daemon"]
+        if source_root.is_dir()
+        else ([binary, "route", "--no-daemon"] if binary else [])
     )
+    if not command:
+        return {}
     try:
         p = subprocess.run(
             [
