@@ -143,47 +143,59 @@ def merge_config(
 def merge_antigravity_config(
     existing: dict[str, Any], template: dict[str, Any], root: Path
 ) -> dict[str, Any]:
-    """Antigravity maps names to events, with ungrouped handlers for Stop."""
+    """Merge Antigravity named hook entries while preserving unrelated hooks."""
     incoming = copy.deepcopy(template.get("harness-router"))
-    if not isinstance(incoming, dict) or not {"PreToolUse", "Stop"} <= incoming.keys():
+    required = {"PreToolUse", "PostToolUse", "PreInvocation", "Stop"}
+    if not isinstance(incoming, dict) or not required <= incoming.keys():
         raise ValueError("Incomplete antigravity hook template")
-    # Anchor commands to the installation, including non-Git projects and changed cwd.
-    command = shlex.join(["python3", str(root / ".antigravity/hooks/pre_tool_use.py")])
-    for event, suffix in (("PreToolUse", ""), ("Stop", " --stop")):
-        handlers = incoming[event]
-        if not isinstance(handlers, list) or not handlers:
-            raise ValueError(f"Invalid antigravity hook template for {event}")
-        for item in handlers:
-            if not isinstance(item, dict):
-                raise ValueError(f"Invalid antigravity hook template for {event}")
-            nested = item.get("hooks") if event == "PreToolUse" else [item]
-            if not isinstance(nested, list) or not nested:
-                raise ValueError(f"Invalid antigravity hook template for {event}")
-            for handler in nested:
-                if not isinstance(handler, dict) or not owned_handler(handler, "antigravity"):
-                    raise ValueError(f"Invalid antigravity hook template for {event}")
-                handler["command"] = command + suffix
 
     merged = copy.deepcopy(existing)
     current = merged.setdefault("harness-router", {})
     if not isinstance(current, dict):
         raise ValueError("Existing harness-router hook must be an object; leaving config unchanged")
-    pretool = merge_config(
-        {"hooks": {"PreToolUse": current.get("PreToolUse", [])}},
-        {"hooks": {"PreToolUse": incoming["PreToolUse"]}},
-        "antigravity",
-    )
-    stops = current.get("Stop", [])
-    if not isinstance(stops, list) or not all(isinstance(handler, dict) for handler in stops):
-        raise ValueError("Existing Stop hooks must be an array of handlers; config unchanged")
-    current["PreToolUse"] = pretool["hooks"]["PreToolUse"]
-    current["Stop"] = [
-        handler for handler in stops if not owned_handler(handler, "antigravity")
-    ] + incoming["Stop"]
-    # Keep enabled:false and any other events or metadata already set by the user.
+
+    commands = {
+        "PreToolUse": shlex.join(["python3", str(root / ".antigravity/hooks/pre_tool_use.py")]),
+        "PostToolUse": shlex.join(["python3", str(root / ".antigravity/hooks/post_tool_use.py")]),
+        "PreInvocation": shlex.join(["python3", str(root / ".antigravity/hooks/pre_invocation.py")]),
+        "Stop": shlex.join(["python3", str(root / ".antigravity/hooks/pre_tool_use.py"), "--stop"]),
+    }
+
+    for event in ("PreToolUse", "PostToolUse"):
+        incoming_groups = incoming[event]
+        if not isinstance(incoming_groups, list) or not incoming_groups:
+            raise ValueError(f"Invalid antigravity hook template for {event}")
+        existing_groups = current.get(event, [])
+        if not isinstance(existing_groups, list):
+            raise ValueError(f"Existing {event} hooks must be an array; leaving config unchanged")
+        cleaned = merge_config(
+            {"hooks": {event: existing_groups}},
+            {"hooks": {event: incoming_groups}},
+            "antigravity",
+        )["hooks"][event]
+        for group in cleaned:
+            for handler in group.get("hooks", []):
+                if isinstance(handler, dict) and owned_handler(handler, "antigravity"):
+                    handler["command"] = commands[event]
+        current[event] = cleaned
+
+    for event in ("PreInvocation", "Stop"):
+        incoming_handlers = incoming[event]
+        if not isinstance(incoming_handlers, list) or not incoming_handlers:
+            raise ValueError(f"Invalid antigravity hook template for {event}")
+        existing_handlers = current.get(event, [])
+        if not isinstance(existing_handlers, list) or not all(isinstance(h, dict) for h in existing_handlers):
+            raise ValueError(f"Existing {event} hooks must be an array; leaving config unchanged")
+        preserved = [h for h in existing_handlers if not owned_handler(h, "antigravity")]
+        fresh = []
+        for handler in incoming_handlers:
+            if not isinstance(handler, dict) or not owned_handler(handler, "antigravity"):
+                raise ValueError(f"Invalid antigravity hook handler for {event}")
+            handler["command"] = commands[event]
+            fresh.append(handler)
+        current[event] = preserved + fresh
+
     return merged
-
-
 def check_target(root: Path, path: Path) -> None:
     # Project hooks must not follow a symlink into global configuration.
     for candidate in (path, *path.parents):
