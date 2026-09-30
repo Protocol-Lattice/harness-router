@@ -196,7 +196,10 @@ export default function harnessRouter(pi: ExtensionAPI): void {
     state.goal = latestUser(ctx).text;
     state.nextTool = "";
     state.redirected = false;
-    await publishCatalog(pi, ctx);
+    state.enforcing = false;
+    state.preparedPrompt = "";
+    state.baselineTools = pi.getActiveTools();
+    await publishCatalog(pi, ctx, state);
   });
 
   pi.on("session_branch", async (_event, ctx) => {
