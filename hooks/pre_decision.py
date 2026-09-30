@@ -147,7 +147,12 @@ def route(
                     break
         result = json.loads(data.split(b"\n", 1)[0])
         if isinstance(result, dict):
-            return result
+            # Do not accept a stale/broken daemon response as a routing result.
+            # A daemon error can otherwise mask the direct OpenRouter path.
+            if result.get("daemon_error") or str(result.get("fallback_reason", "")).startswith("daemon_error:"):
+                result = {}
+            if result:
+                return result
     except (OSError, ValueError, json.JSONDecodeError):
         pass
 
@@ -159,6 +164,7 @@ def route(
             [
                 binary,
                 "route",
+                "--no-daemon",
                 "--mode", "jev_only",
                 "--goal", goal[:1600],
                 "--observation", observation[:4000],
