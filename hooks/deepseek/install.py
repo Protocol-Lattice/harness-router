@@ -20,6 +20,17 @@ HOOK_CONFIG = {
                     }
                 ]
             }
+        ],
+        "PostToolUse": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 .dsh/hooks/hook.py",
+                        "timeout": 5,
+                    }
+                ]
+            }
         ]
     },
 }
@@ -56,25 +67,26 @@ def install(project: Path) -> list[Path]:
             raise ValueError(f"{config} must contain a hooks object")
 
     hooks = existing.setdefault("hooks", {})
-    groups = hooks.setdefault("PreToolUse", [])
-    if not isinstance(groups, list):
-        raise ValueError(f"{config} PreToolUse must be an array")
-
     marker = ".dsh/hooks/hook.py"
-    cleaned = []
-    for group in groups:
-        if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
-            cleaned.append(group)
-            continue
-        remaining = [
-            handler for handler in group["hooks"]
-            if not isinstance(handler, dict)
-            or marker not in str(handler.get("command", ""))
-        ]
-        if remaining:
-            cleaned.append({**group, "hooks": remaining})
-    cleaned.append(HOOK_CONFIG["hooks"]["PreToolUse"][0])
-    hooks["PreToolUse"] = cleaned
+    for event in ("PreToolUse", "PostToolUse"):
+        groups = hooks.setdefault(event, [])
+        if not isinstance(groups, list):
+            raise ValueError(f"{config} {event} must be an array")
+
+        cleaned = []
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                cleaned.append(group)
+                continue
+            remaining = [
+                handler for handler in group["hooks"]
+                if not isinstance(handler, dict)
+                or marker not in str(handler.get("command", ""))
+            ]
+            if remaining:
+                cleaned.append({**group, "hooks": remaining})
+        cleaned.append(HOOK_CONFIG["hooks"][event][0])
+        hooks[event] = cleaned
 
     config.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
     patch.write_text(PATCH, encoding="utf-8")
