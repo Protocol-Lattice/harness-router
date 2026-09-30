@@ -82,7 +82,10 @@ def validate(payload: dict) -> int:
         emit({"hookSpecificOutput":{"hookEventName":"PreToolUse"}}); return 0
     if not fresh(decision) or not isinstance(selected,str) or not selected or selected==current or confidence<threshold:
         emit({"hookSpecificOutput":{"hookEventName":"PreToolUse"}}); return 0
-    marker=cwd/".harness-router"/"sessions"/f"{hashlib.sha256(f'{session}:{decision.get('state_key','')}:{current}'.encode()).hexdigest()}.rerouted"
+    marker_key = f"{session}:{decision.get('state_key', '')}:{current}"
+    marker = cwd / ".harness-router" / "sessions" / (
+        f"{hashlib.sha256(marker_key.encode()).hexdigest()}.rerouted"
+    )
     try:
         marker.parent.mkdir(parents=True,exist_ok=True)
         fd=os.open(marker,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600); os.close(fd)
