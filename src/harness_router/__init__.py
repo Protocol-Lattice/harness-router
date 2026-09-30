@@ -7,6 +7,14 @@ from .adapters import (
     normalize_tools,
 )
 from .config import OpenRouterConfig, RoutingConfig
+from .harness import (
+    HarnessAdapter,
+    HarnessAdapterError,
+    HarnessRunner,
+    HarnessToolCall,
+    HarnessToolResult,
+    UnexpectedToolSelection,
+)
 from .errors import (
     InvalidProviderResponse,
     PolicyDeniedError,
@@ -48,7 +56,12 @@ __all__ = [
     "DefaultExecutionPolicy",
     "ExecutionPolicy",
     "GenericToolAdapter",
+    "HarnessAdapter",
+    "HarnessAdapterError",
+    "HarnessRunner",
     "HarnessState",
+    "HarnessToolCall",
+    "HarnessToolResult",
     "InvalidProviderResponse",
     "JevToolRouter",
     "LoopGuard",
@@ -77,6 +90,7 @@ __all__ = [
     "ToolExecutor",
     "ToolRegistry",
     "UnknownToolError",
+    "UnexpectedToolSelection",
     "hash_arguments",
     "infer_category",
     "infer_risk",
