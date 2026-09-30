@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Route every tool call with a hook — or invoke routing only when you need it with a skill.
+  Precompute the next decision between tool steps with a hook — or invoke routing only when you need it with a skill.
   <br>
   Fast Jev decisions for ordinary ambiguity. Bounded MCTS when the next move has consequences.
 </p>
@@ -72,31 +72,51 @@ Harness Router decides **which tool should run next**.
 
 ## One router. Two ways in.
 
-### 1. Hook — route every tool call
+### 1. Hook — precompute the next decision
 
-Use the Codex, Claude Code, Antigravity, or DeepSeek Harness `PreToolUse` hook, or the ohmypi `tool_call` extension,
-to intercept pending tool calls before execution.
-
-Harness Router compares the tool the agent chose against its session tool catalog.
+The hook integrations use the harness lifecycle to keep a **state → next-tool**
+decision ready for the next model step.
 
 ```text
-Codex chooses a tool
-        |
-        v
-    PreToolUse
-        |
-        v
- Harness Router
-        |
-   same choice? -------- yes ------> allow
-        |
-        no
-        |
-        v
- ask Codex to re-plan
+user prompt / model invocation
+            |
+            v
+      Harness Router
+            |
+            v
+      model chooses tool
+            |
+            v
+       execute tool
+            |
+            v
+        PostToolUse
+            |
+            v
+      Harness Router
+      precompute next
+            |
+            v
+      next model step
 ```
 
-The hooks are **fail-open**: if routing fails, the agent keeps its original choice.
+`PreToolUse` is now a **local validation gate**, not a second Jev call. When the
+model selects the same tool that Harness Router precomputed, the hook returns
+immediately. When a different high-confidence tool was precomputed, the hook
+can deny once and ask the harness to re-plan.
+
+This avoids paying for a second routing request immediately before execution:
+
+```text
+PostToolUse  →  Jev/OpenRouter  →  cache[next_tool]
+PreToolUse   →  local cache      →  allow / re-plan
+```
+
+For Antigravity, `PreInvocation` is also used as the native before-model
+checkpoint, while `PostToolUse` refreshes the state after tool execution.
+
+The hooks are **fail-open**: routing failures never replace the harness's normal
+execution path.
 
 ### Hook decision latency
 
