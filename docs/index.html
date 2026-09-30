@@ -354,27 +354,174 @@
         </div>
       </section>
 
-      <section class="section" id="hooks">
-        <div class="section-no">04 · hooks</div>
-        <div class="content">
-          <h2>One loop. Multiple <em>harnesses.</em></h2>
-          <p class="copy">
-            The integration adapts the same routing lifecycle to different agent environments.
-            Hook behavior is provider-specific, but the architectural role stays the same:
-            enter before the action, route when appropriate, observe after execution where the harness exposes
-            the corresponding lifecycle event.
-          </p>
-
-          <div class="hook-grid">
-            <article class="hook"><b>Codex</b><span>Project hooks for discovery and tool lifecycle integration.</span></article>
-            <article class="hook"><b>Claude Code</b><span>Project hooks around the native tool lifecycle.</span></article>
-            <article class="hook"><b>ohmypi</b><span>Extension-based integration with runtime tool access.</span></article>
-            <article class="hook"><b>Antigravity</b><span>Hook integration plus the Harness Router MCP server.</span></article>
-            <article class="hook"><b>DeepSeek Harness</b><span>Pre-execution bridge for routing in the supported lifecycle.</span></article>
-            <article class="hook"><b>Fail open</b><span>Routing failure does not silently become a new execution policy.</span></article>
+      <section class="install-section" id="codex-hook">
+        <div class="install-head">
+          <div>
+            <div class="section-id">$ 06 · Project Hooks</div>
+            <h2>Discover tools. Own the next step.</h2>
           </div>
+          <p>
+            Choose Codex, Claude Code, ohmypi, Antigravity, or DeepSeek Harness. The integration reads the available tools,
+            then uses Harness Router to precompute and enforce the next tool where the harness allows it.
+          </p>
+        </div>
+
+        <div class="install-grid">
+
+
+          <article class="install-step">
+            <div class="num">01 · INSTALL HOOK</div>
+            <h3>Add the project hook</h3>
+            <p>
+              Run the installer in your project root. It adds the integration files and keeps
+              generated state out of Git. Codex, Claude Code, and Antigravity get merged hook
+              settings; ohmypi loads its extension automatically. Antigravity also gets the
+              Harness Router MCP registration.
+            </p>
+            <fieldset class="hook-provider">
+              <legend>Choose your provider</legend>
+              <label><input type="radio" name="hook-provider" value="codex" checked /><span>Codex</span></label>
+              <label><input type="radio" name="hook-provider" value="claude" /><span>Claude Code</span></label>
+              <label><input type="radio" name="hook-provider" value="ohmypi" /><span>ohmypi</span></label>
+              <label><input type="radio" name="hook-provider" value="antigravity" /><span>Antigravity</span></label>
+              <label><input type="radio" name="hook-provider" value="deepseek" /><span>DeepSeek Harness</span></label>
+            </fieldset>
+            <div class="hook-command-toolbar">
+              <span id="hook-install-requirements">Project root · Python 3.11+</span>
+              <button class="copy" id="hook-install-copy" type="button" data-copy="" aria-label="Copy Codex hook installation command">copy</button>
+            </div>
+            <code class="mini-code" id="hook-install-command">curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider codex</code>
+            <p class="hook-install-note">
+              Keeps existing settings and other hooks. Backs up changed files. Safe to run again.
+              <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/scripts/install_hook.py">View installer ↗</a>
+              Use <code>--provider all</code> for all five, or <code>--provider both</code>
+              for Codex and Claude Code.
+            </p>
+          </article>
+
+          <article class="install-step">
+            <div class="num">02 · START</div>
+            <div aria-live="polite">
+              <div data-hook-provider-details="codex">
+                <h3>Start a fresh Codex session</h3>
+                <p>
+                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  exported, start Codex. The startup hook discovers its MCP tool inventory
+                  and builds the session catalog.
+                </p>
+                <code class="mini-code">.codex/hooks.json
+.codex/hooks/discover_tools.py
+.codex/hooks/pre_tool_use.py</code>
+              </div>
+              <div data-hook-provider-details="claude" hidden>
+                <h3>Start a fresh Claude Code session</h3>
+                <p>
+                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  exported, start Claude Code. The startup hook discovers native tools from
+                  <code>claude mcp serve</code> and configured MCP tools through the SDK control
+                  interface, then publishes the live registry for routing and session commands
+                  via <code>HARNESS_ROUTER_TOOL_REGISTRY</code>. Discovery makes no model call.
+                </p>
+                <code class="mini-code">.claude/settings.json
+.claude/hooks/discover_tools.py
+.claude/hooks/pre_tool_use.py</code>
+              </div>
+              <div data-hook-provider-details="ohmypi" hidden>
+                <h3>Start ohmypi in your project</h3>
+                <p>
+                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  exported, run <code>omp</code> from the project root. It automatically loads
+                  <code>.omp/extensions/harness-router.ts</code>; no hook configuration file
+                  is needed.
+                </p>
+                <code class="mini-code">.omp/extensions/harness-router.ts
+.omp/hooks/pre_tool_use.py
+.omp/tsconfig.json
+.omp/package.json
+.omp/bun.lock</code>
+                <p class="hook-install-note">
+                  To start with automatic extension discovery disabled, load Harness Router
+                  explicitly from the project root:
+                </p>
+                <code class="mini-code">omp --no-extensions --extension .omp/extensions/harness-router.ts</code>
+                <p class="hook-install-note">
+                  The installer uses Bun to install the pinned TypeScript dependencies and
+                  check the extension automatically. Bun must be on your <code>PATH</code>.
+                  To repeat the type check later, run:
+                </p>
+                <code class="mini-code">cd .omp
+bun run typecheck</code>
+                <p class="hook-install-note">
+                  The extension reads the real runtime catalog through <code>pi.getAllTools()</code>
+                  and <code>pi.getActiveTools()</code> before each <code>tool_call</code>, including
+                  active MCP and extension tools. No separate discovery process or model call.
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/.omp/README.md">ohmypi hook guide ↗</a>
+                </p>
+              </div>
+              <div data-hook-provider-details="deepseek" hidden>
+                <h3>Start DeepSeek Harness</h3>
+                <p>
+                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  exported, install the DeepSeek Harness hook. It uses DeepSeek's supported
+                  <code>tools/pre-execute</code> interception point through the
+                  <code>@deepseek-ai/dsh-hooks-codex</code> bridge.
+                </p>
+                <code class="mini-code">.dsh/harness-router-hooks.json
+.dsh/harness-router.patch.yml
+.dsh/hooks/hook.py</code>
+                <p class="hook-install-note">
+                  Start DeepSeek Harness with <code>dsh --patch .dsh/harness-router.patch.yml</code>.
+                  The hook fails open if routing or its explicit tool catalog is unavailable.
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/hooks/deepseek/README.md">DeepSeek hook guide ↗</a>
+                </p>
+              </div>
+              <div data-hook-provider-details="antigravity" hidden>
+                <h3>Start a fresh Antigravity session</h3>
+                <p>
+                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
+                  in Antigravity's environment, restart the project session. The installer registers
+                  native <code>PreToolUse</code> and <code>Stop</code> hooks, plus an MCP server
+                  exposing both <code>route</code> and <code>route_mcts</code>.
+                </p>
+                <code class="mini-code">.agents/hooks.json
+.agents/mcp_config.json
+.antigravity/hooks/discover_tools.py
+.antigravity/hooks/pre_tool_use.py</code>
+                <p class="hook-install-note">
+                  Before each routing check, the hook reads the native and MCP tools exposed to
+                  this conversation from the running language server, including their exact names
+                  and schemas. Disabled or disconnected MCP tools are filtered out. A failed
+                  refresh lets the pending call continue without routing from an old catalog.
+                </p>
+                <p class="hook-install-note">
+                  Automatic routing starts with <code>route</code>; escalation to
+                  <code>route_mcts</code> requires a side-effect-free graph provider.
+                  Live discovery uses internal APIs inspected in Antigravity 2.11.0.
+                  See the guide for runtime connection overrides and simulator setup.
+                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/.antigravity/README.md">Antigravity hook guide ↗</a>
+                </p>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="hook-behavior">
+          <div>
+            <div class="section-id">Behavior</div>
+            <h3>Fail open. Keep approvals.</h3>
+          </div>
+          <p>
+            Each pending tool call uses fast <code>route</code> first. When that
+            decision is uncertain and a side-effect-free graph provider is configured, the hook
+            can escalate to <code>route_mcts</code>. Without a graph provider it never invents an
+            MCTS tree. Same choice, fallback, timeout, or router error lets the original call
+            continue. A different confident choice blocks only that call and asks your agent to
+            re-plan once. Sandbox and approval rules remain untouched.
+          </p>
         </div>
       </section>
+
 
       <section class="section" id="install">
         <div class="section-no">05 · install</div>
