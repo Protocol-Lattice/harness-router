@@ -119,7 +119,7 @@ def owned_handler(handler: dict[str, Any], provider: str) -> bool:
     if provider == "deepseek":
         scripts = [".dsh/hooks/hook.py"]
     else:
-        scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_decision", "pre_tool_use", "post_tool_use", "pre_invocation")]
+        scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_decision", "pre_tool_use", "post_tool_use", "pre_invocation", "stop")]
     return any(
         word == script or word.endswith("/" + script) for word in words for script in scripts
     )
