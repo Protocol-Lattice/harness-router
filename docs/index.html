@@ -3,667 +3,167 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>harness-router — the decision loop for agent harnesses</title>
-  <meta name="description" content="A decision layer for agent harnesses: pre-decision routing, tool execution, post-tool observation, and state-aware next-step selection.">
+  <title>Harness Router — a better next move</title>
+  <meta name="description" content="A decision layer for agent harnesses. Choose the next tool with cached decisions, Jev routing, and optional MCTS. Keep your harness in control.">
   <meta name="theme-color" content="#09080e">
   <link rel="canonical" href="https://protocol-lattice.github.io/harness-router/">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://protocol-lattice.github.io/harness-router/">
-  <meta property="og:title" content="harness-router — the decision loop for agent harnesses">
-  <meta property="og:description" content="Decide. Execute. Observe. Decide again. Harness Router connects pre-decision routing with post-tool feedback.">
+  <meta property="og:title" content="Harness Router — a better next move">
+  <meta property="og:description" content="Your agent. A better next move. A decision layer inside the tool loop you already use.">
   <meta name="twitter:card" content="summary_large_image">
-
-  <style>
-    :root {
-      --bg:#09080e;
-      --panel:rgba(255,255,255,.028);
-      --panel-strong:#100e16;
-      --line:rgba(255,255,255,.105);
-      --line-soft:rgba(255,255,255,.06);
-      --text:#f5f1ed;
-      --muted:#9e98a6;
-      --pink:#ff42be;
-      --pink-soft:rgba(255,66,190,.11);
-      --max:1180px;
-      --sans:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-      --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
-      --serif:Iowan Old Style,Baskerville,"Times New Roman",Times,serif;
-      color-scheme:dark;
-      font-synthesis:none;
-    }
-    *{box-sizing:border-box}
-    html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-    body{
-      margin:0;min-height:100vh;color:var(--text);overflow-x:hidden;
-      background:
-        linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
-        linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px),
-        radial-gradient(circle at 72% 12%,rgba(255,66,190,.11),transparent 28rem),
-        radial-gradient(circle at 15% 60%,rgba(140,99,255,.07),transparent 25rem),
-        var(--bg);
-      background-size:46px 46px,46px 46px,auto,auto,auto;
-      font-family:var(--sans);
-    }
-    a{color:inherit;text-decoration:none}
-    code,pre,button{font-family:var(--mono)}
-    .shell{width:min(calc(100% - 40px),var(--max));margin:auto}
-    .nav{
-      min-height:76px;display:flex;align-items:center;justify-content:space-between;
-      border-bottom:1px solid var(--line-soft);gap:24px
-    }
-    .brand{display:flex;align-items:center;gap:11px;font:650 12px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase}
-    .dot{width:7px;height:7px;border-radius:50%;background:var(--pink);box-shadow:0 0 20px rgba(255,66,190,.85)}
-    .nav-links{display:flex;gap:22px;color:var(--muted);font:11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
-    .nav-links a:hover{color:var(--text)}
-    .hero{
-      min-height:760px;padding:92px 0 80px;display:grid;
-      grid-template-columns:minmax(0,1fr) 310px;gap:70px;align-items:end;
-      border-bottom:1px solid var(--line)
-    }
-    .eyebrow,.section-id{
-      color:var(--pink);font:11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase
-    }
-    .eyebrow:after,.section-id:after{content:"";display:inline-block;width:64px;height:1px;margin:0 0 3px 14px;background:currentColor;opacity:.55}
-    h1{
-      margin:34px 0 28px;max-width:920px;
-      font:500 clamp(64px,9vw,126px)/.84 var(--serif);letter-spacing:-.062em
-    }
-    h1 em,h2 em{color:var(--pink);font-weight:400}
-    .hero-copy{max-width:720px;margin:0;color:#bbb5bf;font-size:clamp(17px,2vw,21px);line-height:1.58}
-    .hero-copy strong,.copy strong{color:var(--text)}
-    .hero-aside{padding-left:25px;border-left:1px solid var(--line)}
-    .aside-label{color:#77717c;font:10px/1.5 var(--mono);letter-spacing:.14em;text-transform:uppercase}
-    .loop-word{margin:19px 0 10px;font:600 28px/1 var(--mono);letter-spacing:-.055em}
-    .loop-note{color:var(--pink);font:11px/1.5 var(--mono)}
-    .mini-loop{margin-top:28px;display:grid;gap:0}
-    .mini-loop div{display:flex;justify-content:space-between;padding:11px 0;border-top:1px solid var(--line-soft);color:var(--muted);font:10px/1.2 var(--mono)}
-    .mini-loop strong{color:var(--text);font-weight:500}
-    .stats{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
-    .stat{padding:27px 25px;min-height:122px;border-right:1px solid var(--line)}
-    .stat:last-child{border:0}
-    .stat strong{display:block;margin-bottom:15px;font:500 29px/1 var(--serif)}
-    .stat span{color:var(--muted);font:10px/1.4 var(--mono);letter-spacing:.11em;text-transform:uppercase}
-    .section{
-      padding:105px 0;border-bottom:1px solid var(--line);
-      display:grid;grid-template-columns:110px minmax(0,1fr);gap:38px
-    }
-    .section-no{color:var(--pink);font:11px/1 var(--mono);letter-spacing:.14em}
-    .content{min-width:0}
-    h2{margin:-13px 0 23px;max-width:850px;font:500 clamp(48px,6.5vw,84px)/.92 var(--serif);letter-spacing:-.052em}
-    .copy{max-width:720px;color:var(--muted);font-size:16px;line-height:1.72}
-    .loop-panel{
-      margin-top:45px;border:1px solid var(--line);border-radius:12px;overflow:hidden;
-      background:var(--panel-strong)
-    }
-    .panel-head{padding:20px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px}
-    .panel-head strong{font:500 12px/1.5 var(--mono)}
-    .panel-head span{color:var(--muted);font:10px/1.5 var(--mono);text-transform:uppercase}
-    .flow{padding:28px;display:grid;grid-template-columns:repeat(5,1fr);gap:0}
-    .flow-step{position:relative;min-height:180px;padding:20px;border:1px solid var(--line);background:rgba(255,255,255,.018)}
-    .flow-step:first-child{border-radius:9px 0 0 9px}
-    .flow-step:last-child{border-radius:0 9px 9px 0}
-    .flow-step:not(:last-child){border-right:0}
-    .flow-step:after{content:"→";position:absolute;right:-10px;top:50%;transform:translateY(-50%);z-index:2;color:var(--pink);font:14px var(--mono)}
-    .flow-step:last-child:after{display:none}
-    .flow-step.active{background:var(--pink-soft);border-color:rgba(255,66,190,.35)}
-    .flow-num{color:var(--pink);font:10px var(--mono)}
-    .flow-title{margin:24px 0 9px;font:500 13px/1.4 var(--mono)}
-    .flow-text{color:var(--muted);font-size:12px;line-height:1.55}
-    .state-box{
-      margin-top:14px;padding:15px 18px;border:1px dashed rgba(255,255,255,.13);
-      color:var(--muted);font:11px/1.7 var(--mono)
-    }
-    .state-box b{color:var(--text);font-weight:500}
-    .decision-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:35px}
-    .card{padding:23px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
-    .card.active{border-color:rgba(255,66,190,.35);background:var(--pink-soft)}
-    .card h3{margin:0 0 10px;font:500 13px/1.4 var(--mono)}
-    .card p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
-    .tag{float:right;color:var(--pink);font:10px var(--mono)}
-    .terminal{margin-top:35px;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:rgba(7,7,11,.83)}
-    .terminal-top{height:42px;padding:0 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line-soft);color:#6d6871;font:10px var(--mono);text-transform:uppercase}
-    .dots{display:flex;gap:5px}.dots i{width:6px;height:6px;border-radius:50%;background:#39343d}
-    pre{margin:0;padding:23px;overflow:auto;color:#cbc5ce;font:11.5px/1.8 var(--mono)}
-    .pink{color:var(--pink)}.dim{color:#67616b}
-    .compare{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:35px}
-    .metric{padding:28px;border:1px solid var(--line);border-radius:11px;background:var(--panel)}
-    .metric-value{display:block;color:var(--pink);font:500 clamp(48px,6vw,78px)/.9 var(--serif);letter-spacing:-.06em}
-    .metric-label{display:block;margin-top:12px;color:#d8d2da;font-size:14px;line-height:1.5}
-    .metric-note{display:block;margin-top:8px;color:var(--muted);font:10px/1.6 var(--mono);text-transform:uppercase;letter-spacing:.08em}
-    .hook-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:35px}
-    .hook{padding:21px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
-    .hook b{display:block;font:500 12px/1.5 var(--mono);margin-bottom:8px}
-    .hook span{color:var(--muted);font-size:12px;line-height:1.5}
-    .install-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:35px}
-    .mini-code{display:block;margin-top:16px;padding:14px;overflow:auto;border:1px solid var(--line-soft);border-radius:7px;background:#08070b;color:#cbc5ce;font:10.5px/1.7 var(--mono);white-space:pre}
-    .install-section{padding:105px 0;border-bottom:1px solid var(--line)}
-    .install-head{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr);gap:60px;align-items:end}
-    .install-head h2{margin:25px 0 0;max-width:760px;font:500 clamp(48px,6.5vw,84px)/.92 var(--serif);letter-spacing:-.052em}
-    .install-head>p{max-width:510px;margin:0 0 7px;color:var(--muted);font-size:15px;line-height:1.75}
-    .install-section .install-grid{grid-template-columns:minmax(0,1.28fr) minmax(0,.82fr);gap:18px;margin-top:48px;align-items:stretch}
-    .router-install{display:grid;grid-template-columns:minmax(220px,.7fr) minmax(0,1.3fr);gap:24px;align-items:center;margin-top:30px;padding:20px 24px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
-    .router-install .num{color:var(--pink);font:10px/1.5 var(--mono);letter-spacing:.13em}
-    .router-install h3{margin:9px 0 5px;font:500 16px/1.35 var(--sans)}
-    .router-install p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
-    .router-install .mini-code{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px}
-    .router-install-command{position:relative;min-width:0}
-    .router-install-command .mini-code{padding-right:68px}
-    .router-install-command .copy{position:absolute;top:8px;right:8px}
-    .hook-install-command{position:relative;min-width:0}
-    .hook-install-command .mini-code{padding-right:68px}
-    .hook-install-command .copy{position:absolute;top:8px;right:8px}
-    .install-step{min-width:0;padding:30px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.012))}
-    .install-step .num{color:var(--pink);font:10px/1.5 var(--mono);letter-spacing:.13em}
-    .install-step h3{margin:18px 0 10px;font:500 20px/1.3 var(--sans);letter-spacing:-.025em}
-    .install-step p{margin:0;color:var(--muted);font-size:14px;line-height:1.7}
-    .hook-provider{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0 12px;padding:14px;border:1px solid var(--line);border-radius:8px;min-width:0}
-    .hook-provider legend{padding:0 7px;color:var(--muted);font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase}
-    .hook-provider label{display:inline-flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:6px;background:rgba(0,0,0,.16);color:#d8d2da;font-size:12px;line-height:1.2;cursor:pointer;transition:border-color .18s,background .18s,color .18s}
-    .hook-provider label:has(input:checked){border-color:rgba(255,66,190,.45);background:var(--pink-soft);color:var(--text)}
-    .hook-provider input{margin:0;accent-color:var(--pink)}
-    .hook-command-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--muted);font:10px/1.5 var(--mono)}
-    .copy{flex:none;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:rgba(255,255,255,.045);color:var(--text);font-size:10px;cursor:pointer}
-    .copy:hover{border-color:rgba(255,66,190,.5)}
-    .install-step .mini-code{width:100%;margin-top:10px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px;line-height:1.75}
-    .install-step>div[aria-live] .mini-code{margin-top:20px}
-    .install-step .hook-install-note{margin-top:15px;font-size:12px;line-height:1.65}
-    .hook-install-note a{color:#e9a1d3;text-decoration:underline;text-decoration-color:rgba(255,66,190,.35);text-underline-offset:3px}
-    .hook-behavior{display:grid;grid-template-columns:minmax(220px,.72fr) minmax(0,1.28fr);gap:45px;align-items:center;margin-top:18px;padding:27px 30px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.018)}
-    .hook-behavior .section-id{margin-bottom:16px}
-    .hook-behavior h3{margin:0;font:500 20px/1.35 var(--sans);letter-spacing:-.02em}
-    .hook-behavior>p{margin:0;color:var(--muted);font-size:13px;line-height:1.75}
-    .cta{padding:110px 0 120px;text-align:center}
-    .cta h2{margin:30px auto 22px;max-width:850px}
-    .cta p{max-width:650px;margin:auto;color:var(--muted);font-size:15px;line-height:1.7}
-    .actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:30px}
-    .btn{display:inline-block;padding:13px 18px;border:1px solid var(--line);border-radius:7px;font:11px var(--mono);text-transform:uppercase;letter-spacing:.06em}
-    .btn:hover{border-color:rgba(255,66,190,.45)}
-    .btn.primary{background:var(--pink);border-color:var(--pink);color:#130b11}
-    footer{padding:25px 0 35px;border-top:1px solid var(--line-soft);display:flex;justify-content:space-between;color:#6f6974;font:10px var(--mono);letter-spacing:.04em}
-    @media(max-width:900px){
-      .hero{grid-template-columns:1fr;min-height:auto;gap:50px}
-      .hero-aside{max-width:420px}
-      .install-head{grid-template-columns:1fr;gap:22px}
-      .install-head>p{max-width:680px}
-      .install-section .install-grid{grid-template-columns:1fr 1fr}
-      .router-install{grid-template-columns:1fr;gap:14px}
-      .hook-behavior{grid-template-columns:1fr;gap:16px}
-      .flow{grid-template-columns:1fr}
-      .flow-step{min-height:auto;border-right:1px solid var(--line)!important;border-radius:0!important}
-      .flow-step:first-child{border-radius:9px 9px 0 0!important}.flow-step:last-child{border-radius:0 0 9px 9px!important}
-      .flow-step:after{content:"↓";right:50%;top:auto;bottom:-10px;transform:translateX(50%)}
-      .flow-step:last-child:after{display:none}
-      .decision-grid,.compare{grid-template-columns:1fr}
-      .hook-grid,.install-grid{grid-template-columns:1fr 1fr}
-    }
-    @media(max-width:640px){
-      .shell{width:min(calc(100% - 28px),var(--max))}
-      .nav-links{display:none}
-      .hero{padding:70px 0}
-      h1{font-size:clamp(58px,18vw,90px)}
-      .stats{grid-template-columns:1fr 1fr}
-      .stat:nth-child(2){border-right:0}.stat:nth-child(-n+2){border-bottom:1px solid var(--line)}
-      .section{display:block;padding:80px 0}
-      .section-no{margin-bottom:35px}
-      .hook-grid,.install-grid{grid-template-columns:1fr}
-      .install-section{padding:80px 0}
-      .install-section .install-grid{grid-template-columns:1fr;gap:12px;margin-top:32px}
-      .router-install{padding:18px}
-      .install-step{padding:22px}
-      .hook-behavior{padding:22px}
-      footer{display:block}footer span{display:block;margin-top:8px}
-    }
-  </style>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2309080e'/%3E%3Cpath d='M8 8v16m0-8h16m-6-6 6 6-6 6' fill='none' stroke='%23ff42be' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script src="site.js" defer></script>
 </head>
+<body id="top">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#top" aria-label="Harness Router home">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 5v22m0-11h20m-8-8 8 8-8 8"/></svg>
+        <span>harness<span class="brand-divider">/</span>router</span>
+      </a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu <span aria-hidden="true">+</span></button>
+      <nav id="site-nav" aria-label="Main navigation">
+        <a href="#loop">How it works</a>
+        <a href="#harnesses">Integrations</a>
+        <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/README.md">Documentation <span aria-hidden="true">↗</span></a>
+        <a class="nav-cta" href="#install">Get started <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
 
-<body>
-  <div class="shell">
-    <nav class="nav">
-      <a class="brand" href="#"><i class="dot"></i> harness-router</a>
-      <div class="nav-links">
-        <a href="#install">install</a>
-        <a href="#loop">loop</a>
-        <a href="#decision">decision</a>
-        <a href="#codex-hook">hooks</a>
-        <a href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">github ↗</a>
-      </div>
-    </nav>
-
-    <header class="hero">
-      <div>
-        <div class="eyebrow">$ decision layer</div>
-        <h1>Decide.<br>Execute.<br><em>Observe.</em></h1>
-        <p class="hero-copy">
-          Harness Router sits inside the tool lifecycle of an agent harness.
-          <strong>Pre-decision</strong> chooses or validates the next tool.
-          <strong>Post-tool-use</strong> observes what happened. The resulting state can feed the next decision.
-        </p>
-      </div>
-      <aside class="hero-aside">
-        <div class="aside-label">The loop</div>
-        <div class="loop-word">DECIDE → ACT</div>
-        <div class="loop-note">→ OBSERVE → DECIDE</div>
-        <div class="mini-loop">
-          <div><span>entry</span><strong>pre_decision</strong></div>
-          <div><span>execution</span><strong>tool call</strong></div>
-          <div><span>feedback</span><strong>post_tool_use</strong></div>
-          <div><span>next step</span><strong>state → decision</strong></div>
+  <main id="main">
+    <section class="hero container" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="status-dot"></span> The decision layer for agent harnesses</p>
+        <h1 id="hero-title">Your agent.<br>A better<br><em>next move.</em></h1>
+        <p class="hero-description">Give every tool call a little more direction. Harness Router chooses the next tool, uses the result, and keeps your agent moving.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#install">Start routing <span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="https://github.com/Protocol-Lattice/harness-router">Explore the code <span aria-hidden="true">↗</span></a>
         </div>
-      </aside>
-    </header>
+        <p class="hero-footnote"><span>Open source</span><span>Python 3.11+</span><span>MIT licensed</span></p>
+      </div>
 
-    <div class="stats">
-      <div class="stat"><strong>fast</strong><span>cache-first routing</span></div>
-      <div class="stat"><strong>Jev</strong><span>policy decision layer</span></div>
-      <div class="stat"><strong>MCTS</strong><span>ambiguous paths</span></div>
-      <div class="stat"><strong>5</strong><span>harness integrations</span></div>
+      <div class="demo" aria-label="Interactive routing example">
+        <div class="demo-bar"><span><span class="status-dot"></span> routing.preview</span><span>Illustrative example</span></div>
+        <div class="demo-body">
+          <div class="scenario-controls" role="group" aria-label="Choose an example state">
+            <button type="button" data-scenario="inspect" aria-pressed="true">01 Inspect</button>
+            <button type="button" data-scenario="patch" aria-pressed="false">02 Patch</button>
+            <button type="button" data-scenario="verify" aria-pressed="false">03 Verify</button>
+          </div>
+          <div class="demo-state"><span class="micro-label">Current observation</span><p id="demo-observation">The failing test points to <code>src/parser.py</code>.</p></div>
+          <div class="routing-visual" aria-hidden="true">
+            <svg class="routing-paths" viewBox="0 0 440 220" preserveAspectRatio="none">
+              <path data-route="read_file" class="is-selected" d="M160 30 H195 Q215 30 215 55 V90 Q215 110 240 110 H330"/>
+              <path data-route="search_code" d="M160 83 H192 Q210 83 220 98 L230 110 H330"/>
+              <path data-route="write_file" d="M160 136 H192 Q210 136 220 122 L230 110 H330"/>
+              <path data-route="run_tests" d="M160 189 H195 Q215 189 215 165 V130 Q215 110 240 110 H330"/>
+            </svg>
+            <div class="candidate-list">
+              <div data-candidate="read_file" class="candidate is-selected"><span>↳</span> read_file <i></i></div>
+              <div data-candidate="search_code" class="candidate"><span>⌕</span> search_code <i></i></div>
+              <div data-candidate="write_file" class="candidate"><span>+</span> write_file <i></i></div>
+              <div data-candidate="run_tests" class="candidate"><span>▷</span> run_tests <i></i></div>
+            </div>
+            <div class="router-hub"><div class="hub-ring"></div><svg viewBox="0 0 32 32"><path d="M6 5v22m0-11h20m-8-8 8 8-8 8"/></svg><span>harness<br>router</span></div>
+          </div>
+          <div class="demo-output" aria-live="polite" aria-atomic="true">
+            <div><span class="micro-label">Selected next tool</span><strong id="demo-tool">read_file</strong></div>
+            <div class="demo-confidence"><strong id="demo-confidence">0.93</strong><span>confidence</span></div>
+            <span class="output-arrow" aria-hidden="true">↗</span>
+          </div>
+        </div>
+        <div class="demo-footer"><span>Cache → Jev → optional MCTS</span><span>Decision only <span aria-hidden="true">↗</span></span></div>
+      </div>
+    </section>
+
+    <div class="integration-band">
+      <div class="container band-inner">
+        <p>For the harness <br>you already use.</p>
+        <a href="#harnesses">Codex</a><a href="#harnesses">Claude Code</a><a href="#harnesses">ohmypi</a><a href="#harnesses">Antigravity</a><a href="#harnesses">DeepSeek</a>
+      </div>
     </div>
 
-    <main>
+    <section class="section container" id="loop" aria-labelledby="loop-title">
+      <div class="section-heading"><p class="eyebrow">01 / The loop</p><span class="section-note">A little direction. Every iteration.</span></div>
+      <div class="loop-heading"><h2 id="loop-title">Good decisions<br>come <em>full circle.</em></h2><p class="section-description">A tool result changes what your agent knows. Feed that observation into the next choice, and routing becomes part of the whole workflow.</p></div>
+      <div class="loop-grid">
+        <article class="loop-stage"><div class="stage-top"><span>01</span><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 12h12v12h20M8 36h12V24m12-8 8 8-8 8"/></svg></div><h3>Decide.</h3><p>Bring the goal, current state, and available tools. Router chooses a next step from that set.</p><code>pre_decision</code></article>
+        <article class="loop-stage"><div class="stage-top"><span>02</span><svg viewBox="0 0 48 48" aria-hidden="true"><path d="m18 10 20 14-20 14V10ZM8 10v28"/></svg></div><h3>Execute.</h3><p>Your harness builds the arguments, checks its permissions, and carries out the tool call.</p><code>host harness</code></article>
+        <article class="loop-stage" id="feedback"><div class="stage-top"><span>03</span><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M38 24a14 14 0 1 1-4-10M38 7v12H26M18 24l4 4 8-8"/></svg></div><h3>Observe.</h3><p>Turn the result into the next observation. Recompute the next tool as the task progresses.</p><code>post_tool_use</code></article>
+      </div>
+      <div class="loop-return"><span aria-hidden="true">↳</span><span>New observation. New decision.</span><span class="return-line"></span><span aria-hidden="true">↲</span></div>
+      <p class="ownership-note"><span class="status-dot"></span> Your harness keeps its planning, permissions, approvals, and execution policy.</p>
+    </section>
 
-
-      <section class="section" id="loop">
-        <div class="section-no">01 · loop</div>
-        <div class="content">
-          <h2>The router is part of the <em>loop.</em></h2>
-          <p class="copy">
-            The important boundary is no longer just a tool interception. Harness Router has an entry point
-            before execution and an observation point after execution. That gives the integration a closed lifecycle:
-            <strong>decide → execute → observe → decide again</strong>.
-          </p>
-
-          <div class="loop-panel">
-            <div class="panel-head">
-              <strong>harness-router / control flow</strong>
-              <span>pre → execute → post → state</span>
-            </div>
-            <div class="flow">
-              <article class="flow-step active">
-                <div class="flow-num">01</div>
-                <div class="flow-title">PRE_DECISION</div>
-                <div class="flow-text">Inspect the pending action, available tools, cache and routing context.</div>
-              </article>
-              <article class="flow-step">
-                <div class="flow-num">02</div>
-                <div class="flow-title">DECIDE</div>
-                <div class="flow-text">Use cache, fast routing, Jev or escalate to MCTS when needed.</div>
-              </article>
-              <article class="flow-step">
-                <div class="flow-num">03</div>
-                <div class="flow-title">EXECUTE</div>
-                <div class="flow-text">The harness executes the selected tool subject to its own approvals and policies.</div>
-              </article>
-              <article class="flow-step active">
-                <div class="flow-num">04</div>
-                <div class="flow-title">POST_TOOL_USE</div>
-                <div class="flow-text">Observe the tool outcome: success, failure and execution context.</div>
-              </article>
-              <article class="flow-step">
-                <div class="flow-num">05</div>
-                <div class="flow-title">STATE → NEXT</div>
-                <div class="flow-text">Feed relevant outcome state into the next pre-decision.</div>
-              </article>
-            </div>
-            <div class="state-box">
-              <b>Closed loop:</b>
-              <code>pre_decision → decision → tool → post_tool_use → state → pre_decision</code>
-            </div>
-          </div>
+    <section class="decision-section" id="decision" aria-labelledby="decision-title">
+      <div class="container decision-layout">
+        <div class="decision-intro"><p class="eyebrow">02 / The decision stack</p><h2 id="decision-title">The right depth<br>for the <em>next step.</em></h2><p class="section-description">Reuse a known choice. Ask Jev when tools overlap. Look ahead when downstream outcomes matter.</p><a class="text-link" href="https://github.com/Protocol-Lattice/harness-router/blob/main/README.md#how-it-works">Inside the router <span aria-hidden="true">↗</span></a><div class="stack-symbol" aria-hidden="true"><span></span><span></span><span></span><i>↗</i></div></div>
+        <div class="decision-stack">
+          <details open><summary><span class="stack-number">01</span><span>Cache</span><span class="stack-tag">Reuse</span><span class="expand-icon" aria-hidden="true">+</span></summary><div class="stack-detail"><p>A compatible state can reuse a previous decision. The hook cache includes the goal, observation, last action, and tool catalog.</p><div class="stack-code"><span>same state</span><span aria-hidden="true">→</span><strong>cached choice</strong></div></div></details>
+          <details><summary><span class="stack-number">02</span><span>Jev</span><span class="stack-tag">Choose</span><span class="expand-icon" aria-hidden="true">+</span></summary><div class="stack-detail"><p>Resolve a closed choice among available tools through OpenRouter. Large registries can be narrowed by category before selecting a tool.</p><div class="stack-code"><span>available tools</span><span aria-hidden="true">→</span><strong>next tool</strong></div></div></details>
+          <details><summary><span class="stack-number">03</span><span>MCTS</span><span class="stack-tag">Look ahead</span><span class="expand-icon" aria-hidden="true">+</span></summary><div class="stack-detail"><p>Search a supplied, side-effect-free state graph when the first choice depends on later outcomes. Simulate the possibilities, then return the first action.</p><div class="stack-code"><span>simulated paths</span><span aria-hidden="true">→</span><strong>first action</strong></div></div></details>
+          <p class="stack-footnote">MCTS is optional and needs a simulator. A fallback hands the choice back to the planner.</p>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section class="section" id="decision">
-        <div class="section-no">02 · decision</div>
-        <div class="content">
-          <h2>Cheap when obvious.<br><em>Search when ambiguous.</em></h2>
-          <p class="copy">
-            Routing is deliberately hierarchical. A known decision should not pay for a model call.
-            An uncertain choice can use Jev, while a downstream workflow can escalate to bounded MCTS.
-            The router therefore spends computation where the decision actually needs it.
-          </p>
+    <section class="section container" id="harnesses" aria-labelledby="harnesses-title">
+      <span id="codex-hook" class="anchor-alias"></span>
+      <div class="section-heading"><p class="eyebrow">03 / Integrations</p><span class="section-note">One router. Five ways in.</span></div>
+      <div class="integrations-heading"><h2 id="harnesses-title">A native place<br>in <em>your workflow.</em></h2><p class="section-description">Each adapter works with the lifecycle its host exposes. Your tools and execution controls stay with the harness.</p></div>
+      <div class="harness-list">
+        <article class="harness-row"><span class="harness-index">01</span><h3>Codex</h3><p>Prompt and result hooks precompute the next tool. Local validation can request a re-plan.</p><span class="harness-type">Native hooks</span><a href="#install" data-select-provider="codex" aria-label="Set up Codex">Set up <span aria-hidden="true">↗</span></a></article>
+        <article class="harness-row"><span class="harness-index">02</span><h3>Claude Code</h3><p>Discover native and MCP tools, then connect prompt, tool-result, and validation callbacks.</p><span class="harness-type">Native hooks</span><a href="#install" data-select-provider="claude" aria-label="Set up Claude Code">Set up <span aria-hidden="true">↗</span></a></article>
+        <article class="harness-row"><span class="harness-index">03</span><h3>ohmypi</h3><p>Route from the live tool registry and expose the selected tool through the active tool set.</p><span class="harness-type">Extension</span><a href="#install" data-select-provider="ohmypi" aria-label="Set up ohmypi">Set up <span aria-hidden="true">↗</span></a></article>
+        <article class="harness-row"><span class="harness-index">04</span><h3>Antigravity</h3><p>Use invocation and result callbacks to prepare decisions, then validate before execution.</p><span class="harness-type">Hooks + MCP</span><a href="#install" data-select-provider="antigravity" aria-label="Set up Antigravity">Set up <span aria-hidden="true">↗</span></a></article>
+        <article class="harness-row"><span class="harness-index">05</span><h3>DeepSeek</h3><p>Connect through the Codex hook bridge with a supplied tool catalog and current goal.</p><span class="harness-type">Hook bridge</span><a href="#install" data-select-provider="deepseek" aria-label="Set up DeepSeek Harness">Set up <span aria-hidden="true">↗</span></a></article>
+      </div>
+      <div class="integration-alternative"><span class="micro-label">Building your own loop?</span><p>Call Router directly with the Python API, CLI, or MCP server.</p><a class="text-link" href="https://github.com/Protocol-Lattice/harness-router/blob/main/README.md#python-api">Read the API guide <span aria-hidden="true">↗</span></a></div>
+    </section>
 
-          <div class="decision-grid">
-            <article class="card">
-              <h3>01 · CACHE <span class="tag">FASTEST</span></h3>
-              <p>Reuse a compatible previous decision before invoking the decision engine.</p>
-            </article>
-            <article class="card active">
-              <h3>02 · ROUTE <span class="tag">JEV</span></h3>
-              <p>Resolve ordinary tool selection with a lightweight policy decision.</p>
-            </article>
-            <article class="card">
-              <h3>03 · MCTS <span class="tag">DEEPER</span></h3>
-              <p>For ambiguous downstream choices, search a side-effect-free state graph.</p>
-            </article>
-            <article class="card">
-              <h3>04 · FEEDBACK <span class="tag">POST</span></h3>
-              <p>Observe the executed tool and make its outcome available to the next decision.</p>
-            </article>
-          </div>
-
-          <div class="terminal">
-            <div class="terminal-top"><span>decision lifecycle</span><div class="dots"><i></i><i></i><i></i></div></div>
-            <pre><span class="dim">// every cycle starts with the current harness state</span>
-<span class="pink">pre_decision</span>(state, pending_call)
-    │
-    ├── cache hit ───────────────► decision
-    │
-    ├── obvious ─────────────────► route
-    │                                │
-    └── ambiguous ────────────────► route_mcts
-                                     │
-                                     ▼
-                                  execute
-                                     │
-                                     ▼
-                              <span class="pink">post_tool_use</span>(outcome)
-                                     │
-                                     ▼
-                                state update
-                                     │
-                                     └────────► next pre_decision</pre>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="feedback">
-        <div class="section-no">03 · feedback</div>
-        <div class="content">
-          <h2>Execution becomes <em>context.</em></h2>
-          <p class="copy">
-            <code>post_tool_use</code> closes the gap between choosing a tool and knowing what that tool actually did.
-            A successful read, a failed command, or another execution outcome can become part of the context used by
-            the following decision. This is the architectural bridge from routing individual calls toward controlling
-            the sequence of next actions.
-          </p>
-
-          <div class="compare">
-            <article class="metric">
-              <span class="metric-value">pre</span>
-              <span class="metric-label">Decide what should happen next.</span>
-              <span class="metric-note">pending action · tools · cache · routing policy</span>
-            </article>
-            <article class="metric">
-              <span class="metric-value">post</span>
-              <span class="metric-label">Record what happened after execution.</span>
-              <span class="metric-note">outcome · error · result · state transition</span>
-            </article>
-          </div>
-
-          <div class="state-box">
-            <b>Important boundary:</b> Harness Router does not claim ownership of every part of an agent's reasoning.
-            It provides a decision/control-flow layer around tool execution while the host harness retains its own
-            planning, permissions and execution semantics.
-          </div>
-        </div>
-      </section>
-
-      <section class="install-section" id="codex-hook">
-        <div class="install-head">
-          <div>
-            <div class="section-id">$ 04 · Project Hooks</div>
-            <h2>Discover tools. Own the next step.</h2>
-          </div>
-          <p>
-            Choose Codex, Claude Code, ohmypi, Antigravity, or DeepSeek Harness. The integration reads the available tools,
-            then uses Harness Router to precompute and enforce the next tool where the harness allows it.
-          </p>
-        </div>
-
-        <div class="router-install" id="install">
-          <div>
-            <div class="num">00 · INSTALL ROUTER</div>
-            <h3>Install Harness Router</h3>
-            <p>Install the router once before adding a project hook.</p>
-          </div>
-          <div class="router-install-command">
-            <code class="mini-code" id="router-install-command">uv tool install --force \
-  --with 'mcp>=2,&lt;3' \
-  'git+https://github.com/Protocol-Lattice/harness-router.git@main'</code>
-            <button class="copy" id="router-install-copy" type="button" aria-label="Copy Harness Router installation command">copy</button>
-          </div>
-        </div>
-
-        <div class="install-grid">
-
-
-          <article class="install-step">
-            <div class="num">01 · INSTALL HOOK</div>
-            <h3>Add the project hook</h3>
-            <p>
-              Run the installer in your project root. It adds the integration files and keeps
-              generated state out of Git. Codex, Claude Code, and Antigravity get merged hook
-              settings; ohmypi loads its extension automatically. Antigravity also gets the
-              Harness Router MCP registration.
-            </p>
-            <fieldset class="hook-provider">
-              <legend>Choose your provider</legend>
-              <label><input type="radio" name="hook-provider" value="codex" checked /><span>Codex</span></label>
-              <label><input type="radio" name="hook-provider" value="claude" /><span>Claude Code</span></label>
-              <label><input type="radio" name="hook-provider" value="ohmypi" /><span>ohmypi</span></label>
-              <label><input type="radio" name="hook-provider" value="antigravity" /><span>Antigravity</span></label>
-              <label><input type="radio" name="hook-provider" value="deepseek" /><span>DeepSeek Harness</span></label>
+    <section class="setup-section" id="install" aria-labelledby="install-title">
+      <div class="container">
+        <div class="section-heading"><p class="eyebrow">04 / Get started</p><span class="section-note">Python 3.11+ · OpenRouter API key</span></div>
+        <h2 id="install-title">Make the <em>connection.</em></h2>
+        <p class="setup-intro">Install the router, add your key, and connect the harness you use.</p>
+        <div class="setup-layout">
+          <aside class="setup-sidebar">
+            <fieldset class="provider-picker"><legend>Your harness</legend>
+              <label><input type="radio" name="hook-provider" value="codex" checked><span><b>01</b> Codex <i aria-hidden="true">↗</i></span></label>
+              <label><input type="radio" name="hook-provider" value="claude"><span><b>02</b> Claude Code <i aria-hidden="true">↗</i></span></label>
+              <label><input type="radio" name="hook-provider" value="ohmypi"><span><b>03</b> ohmypi <i aria-hidden="true">↗</i></span></label>
+              <label><input type="radio" name="hook-provider" value="antigravity"><span><b>04</b> Antigravity <i aria-hidden="true">↗</i></span></label>
+              <label><input type="radio" name="hook-provider" value="deepseek"><span><b>05</b> DeepSeek <i aria-hidden="true">↗</i></span></label>
             </fieldset>
-            <div class="hook-command-toolbar">
-              <span id="hook-install-requirements">Project root · Python 3.11+</span>
-            </div>
-            <div class="hook-install-command">
-              <code class="mini-code" id="hook-install-command">curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
-  | python3 - --provider codex</code>
-              <button class="copy" id="hook-install-copy" type="button" data-copy="" aria-label="Copy Codex hook installation command">copy</button>
-            </div>
-            <p class="hook-install-note">
-              Keeps existing settings and other hooks. Backs up changed files. Safe to run again.
-              <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/scripts/install_hook.py">View installer ↗</a>
-              Use <code>--provider all</code> for all five, or <code>--provider both</code>
-              for Codex and Claude Code.
-            </p>
-          </article>
-
-          <article class="install-step">
-            <div class="num">02 · START</div>
-            <div aria-live="polite">
-              <div data-hook-provider-details="codex">
-                <h3>Start a fresh Codex session</h3>
-                <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
-                  exported, start Codex. The startup hook discovers its MCP tool inventory
-                  and builds the session catalog.
-                </p>
-                <code class="mini-code">.codex/hooks.json
-.codex/hooks/discover_tools.py
-.codex/hooks/pre_tool_use.py</code>
-              </div>
-              <div data-hook-provider-details="claude" hidden>
-                <h3>Start a fresh Claude Code session</h3>
-                <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
-                  exported, start Claude Code. The startup hook discovers native tools from
-                  <code>claude mcp serve</code> and configured MCP tools through the SDK control
-                  interface, then publishes the live registry for routing and session commands
-                  via <code>HARNESS_ROUTER_TOOL_REGISTRY</code>. Discovery makes no model call.
-                </p>
-                <code class="mini-code">.claude/settings.json
-.claude/hooks/discover_tools.py
-.claude/hooks/pre_tool_use.py</code>
-              </div>
-              <div data-hook-provider-details="ohmypi" hidden>
-                <h3>Start ohmypi in your project</h3>
-                <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
-                  exported, run <code>omp</code> from the project root. It automatically loads
-                  <code>.omp/extensions/harness-router.ts</code>; no hook configuration file
-                  is needed.
-                </p>
-                <code class="mini-code">.omp/extensions/harness-router.ts
-.omp/hooks/pre_tool_use.py
-.omp/tsconfig.json
-.omp/package.json
-.omp/bun.lock</code>
-                <p class="hook-install-note">
-                  To start with automatic extension discovery disabled, load Harness Router
-                  explicitly from the project root:
-                </p>
-                <code class="mini-code">omp --no-extensions --extension .omp/extensions/harness-router.ts</code>
-                <p class="hook-install-note">
-                  The installer uses Bun to install the pinned TypeScript dependencies and
-                  check the extension automatically. Bun must be on your <code>PATH</code>.
-                  To repeat the type check later, run:
-                </p>
-                <code class="mini-code">cd .omp
-bun run typecheck</code>
-                <p class="hook-install-note">
-                  The extension reads the real runtime catalog through <code>pi.getAllTools()</code>
-                  and <code>pi.getActiveTools()</code> before each <code>tool_call</code>, including
-                  active MCP and extension tools. No separate discovery process or model call.
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/.omp/README.md">ohmypi hook guide ↗</a>
-                </p>
-              </div>
-              <div data-hook-provider-details="deepseek" hidden>
-                <h3>Start DeepSeek Harness</h3>
-                <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
-                  exported, install the DeepSeek Harness hook. It uses DeepSeek's supported
-                  <code>tools/pre-execute</code> interception point through the
-                  <code>@deepseek-ai/dsh-hooks-codex</code> bridge.
-                </p>
-                <code class="mini-code">.dsh/harness-router-hooks.json
-.dsh/harness-router.patch.yml
-.dsh/hooks/hook.py</code>
-                <p class="hook-install-note">
-                  Start DeepSeek Harness with <code>dsh --patch .dsh/harness-router.patch.yml</code>.
-                  The hook fails open if routing or its explicit tool catalog is unavailable.
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/hooks/deepseek/README.md">DeepSeek hook guide ↗</a>
-                </p>
-              </div>
-              <div data-hook-provider-details="antigravity" hidden>
-                <h3>Start a fresh Antigravity session</h3>
-                <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
-                  in Antigravity's environment, restart the project session. The installer registers
-                  native <code>PreToolUse</code> and <code>Stop</code> hooks, plus an MCP server
-                  exposing both <code>route</code> and <code>route_mcts</code>.
-                </p>
-                <code class="mini-code">.agents/hooks.json
-.agents/mcp_config.json
-.antigravity/hooks/discover_tools.py
-.antigravity/hooks/pre_tool_use.py</code>
-                <p class="hook-install-note">
-                  Before each routing check, the hook reads the native and MCP tools exposed to
-                  this conversation from the running language server, including their exact names
-                  and schemas. Disabled or disconnected MCP tools are filtered out. A failed
-                  refresh lets the pending call continue without routing from an old catalog.
-                </p>
-                <p class="hook-install-note">
-                  Automatic routing starts with <code>route</code>; escalation to
-                  <code>route_mcts</code> requires a side-effect-free graph provider.
-                  Live discovery uses internal APIs inspected in Antigravity 2.11.0.
-                  See the guide for runtime connection overrides and simulator setup.
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/.antigravity/README.md">Antigravity hook guide ↗</a>
-                </p>
-              </div>
-            </div>
-          </article>
-        </div>
-
-        <div class="hook-behavior">
-          <div>
-            <div class="section-id">Behavior</div>
-            <h3>Fail open. Keep approvals.</h3>
+            <p class="setup-sidebar-note">Project hooks connect routing to the agent lifecycle. For explicit calls, use <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/README.md#mcp">MCP or the Python API ↗</a>.</p>
+          </aside>
+          <div class="setup-content">
+            <article class="setup-step"><div class="step-heading"><h3><span>01</span> Install the router</h3><span class="micro-label">Terminal</span></div><div class="code-window"><div class="code-toolbar"><span>uv / harness-router</span><button class="copy-button" type="button" data-copy-target="router-install-command" aria-label="Copy router installation command">Copy <span aria-hidden="true">⧉</span></button></div><pre><code id="router-install-command">uv tool install --force --with 'mcp&gt;=2,&lt;3' \
+  'git+https://github.com/Protocol-Lattice/harness-router.git@main'</code></pre></div></article>
+            <article class="setup-step"><div class="step-heading"><h3><span>02</span> Set your provider key</h3></div><div class="code-window"><div class="code-toolbar"><span>Environment</span><button class="copy-button" type="button" data-copy-target="key-command" aria-label="Copy API key environment command">Copy <span aria-hidden="true">⧉</span></button></div><pre><code id="key-command">export OPENROUTER_API_KEY="your-key"</code></pre></div><p class="step-note">Make the key available to the harness process before starting a session.</p></article>
+            <article class="setup-step"><div class="step-heading"><h3><span>03</span> Connect <span id="provider-name">Codex</span></h3><span class="micro-label" id="hook-install-requirements">Git project root</span></div><div class="code-window"><div class="code-toolbar"><span>Project hook installer</span><button class="copy-button" id="hook-install-copy" type="button" data-copy-target="hook-install-command" aria-label="Copy Codex hook installation command">Copy <span aria-hidden="true">⧉</span></button></div><pre><code id="hook-install-command">curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider codex</code></pre></div>
+              <details class="adapter-completion" id="adapter-completion" open><summary>Finish installing the adapters <span aria-hidden="true">+</span></summary><p>The current Codex and Claude Code installer also needs these two adapter files. Run this after installing the hook.</p><div class="code-window"><div class="code-toolbar"><span>Prompt and stop adapters</span><button class="copy-button" type="button" data-copy-target="adapter-command" aria-label="Copy adapter completion command">Copy <span aria-hidden="true">⧉</span></button></div><pre><code id="adapter-command">for hook in pre_decision stop; do
+  curl -fsSL "https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/.codex/hooks/${hook}.py" \
+    -o ".codex/hooks/${hook}.py"
+done</code></pre></div></details>
+              <div class="provider-next" aria-live="polite"><span class="status-dot"></span><div><h4 id="provider-next-title">Start a fresh Codex session</h4><p id="provider-next-text">The startup hook discovers tools. Prompt and result callbacks then prepare the next choice for local validation.</p><a id="provider-guide" class="text-link" href="https://github.com/Protocol-Lattice/harness-router/blob/main/README.md#integrations">Integration guide <span aria-hidden="true">↗</span></a></div></div>
+            </article>
           </div>
-          <p>
-            Each pending tool call uses fast <code>route</code> first. When that
-            decision is uncertain and a side-effect-free graph provider is configured, the hook
-            can escalate to <code>route_mcts</code>. Without a graph provider it never invents an
-            MCTS tree. Same choice, fallback, timeout, or router error lets the original call
-            continue. A different confident choice blocks only that call and asks your agent to
-            re-plan once. Sandbox and approval rules remain untouched.
-          </p>
         </div>
-      </section>
+        <div class="setup-bottom"><p>The installer merges settings and backs up changed files. Add <code>.harness-router/</code> to your project's <code>.gitignore</code> for shared session state.</p><a href="https://github.com/Protocol-Lattice/harness-router/blob/main/scripts/install_hook.py">Inspect the installer <span aria-hidden="true">↗</span></a></div>
+      </div>
+    </section>
 
+    <section class="closing container" aria-labelledby="closing-title"><div><p class="eyebrow">Open source. Open possibilities.</p><h2 id="closing-title">Keep your harness.<br><em>Move it forward.</em></h2></div><div class="closing-actions"><a class="button button-primary" href="https://github.com/Protocol-Lattice/harness-router">Build with Harness Router <span aria-hidden="true">↗</span></a><a class="text-link" href="https://github.com/Protocol-Lattice/harness-router/blob/main/BENCHMARK.md">Read the benchmark <span aria-hidden="true">↗</span></a></div></section>
+  </main>
 
-      <section class="cta">
-        <div class="eyebrow">$ harness-router</div>
-        <h2>Control the <em>next step.</em></h2>
-        <p>
-          Cache obvious decisions. Route uncertain choices. Observe execution.
-          Feed the outcome into the next decision without taking ownership away from the harness.
-        </p>
-        <div class="actions">
-          <a class="btn primary" href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">View on GitHub</a>
-          <a class="btn" href="https://github.com/Protocol-Lattice/harness-router/blob/main/README.md" target="_blank" rel="noreferrer">Read docs</a>
-          <a class="btn" href="#install">Install</a>
-        </div>
-      </section>
-    </main>
-
-    <footer>
-      <span>Protocol Lattice · harness-router · MIT</span>
-      <span>Decide. Execute. Observe. Decide again.</span>
-    </footer>
-  </div>
-  <script>
-    const hookProviders = Array.from(document.querySelectorAll('input[name="hook-provider"]'));
-    const hookProviderDetails = Array.from(document.querySelectorAll('[data-hook-provider-details]'));
-    const hookInstallCommand = document.getElementById('hook-install-command');
-    const hookInstallRequirements = document.getElementById('hook-install-requirements');
-    const hookInstallCopy = document.getElementById('hook-install-copy');
-
-    function selectHookProvider(provider) {
-      hookProviderDetails.forEach((details) => {
-        details.hidden = details.dataset.hookProviderDetails !== provider;
-      });
-
-      const command = [
-        'curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py ' + '\\',
-        `  | python3 - --provider ${provider}`,
-      ].join('\n');
-      const label = hookProviders.find((input) => input.value === provider)?.nextElementSibling.textContent ?? provider;
-      hookInstallCommand.textContent = command;
-      hookInstallRequirements.textContent = provider === 'ohmypi'
-        ? 'Project root · Python 3.11+ · Bun'
-        : 'Project root · Python 3.11+';
-      hookInstallCopy.dataset.copy = command;
-      hookInstallCopy.setAttribute('aria-label', `Copy ${label} hook installation command`);
-    }
-
-    hookProviders.forEach((input) => {
-      input.addEventListener('change', () => selectHookProvider(input.value));
-    });
-
-    selectHookProvider(hookProviders.find((input) => input.checked)?.value ?? 'codex');
-    document.getElementById('router-install-copy').dataset.copy =
-      document.getElementById('router-install-command').textContent;
-
-    function legacyCopy(text) {
-      if (typeof document.execCommand !== 'function') return false;
-      const field = document.createElement('textarea');
-      field.value = text;
-      field.setAttribute('readonly', '');
-      field.style.position = 'fixed';
-      field.style.opacity = '0';
-      document.body.append(field);
-      field.select();
-      const copied = document.execCommand('copy');
-      field.remove();
-      return copied;
-    }
-
-    document.querySelectorAll('.copy').forEach((button) => {
-      button.addEventListener('click', async () => {
-        let copied = false;
-        try {
-          if (navigator.clipboard?.writeText) {
-            await navigator.clipboard.writeText(button.dataset.copy);
-            copied = true;
-          }
-        } catch {}
-        if (!copied) copied = legacyCopy(button.dataset.copy);
-        button.textContent = copied ? 'copied' : 'failed';
-        window.setTimeout(() => { button.textContent = 'copy'; }, 1600);
-      });
-    });
-  </script>
+  <footer class="container site-footer"><a class="brand" href="#top"><span>harness<span class="brand-divider">/</span>router</span></a><p>Protocol Lattice <span>·</span> MIT <span>·</span> Alpha</p><a href="#top">Back to top <span aria-hidden="true">↑</span></a></footer>
+  <div class="sr-only" id="copy-status" role="status" aria-live="polite"></div>
 </body>
 </html>
