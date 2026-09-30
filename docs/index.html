@@ -135,11 +135,43 @@
     .hook b{display:block;font:500 12px/1.5 var(--mono);margin-bottom:8px}
     .hook span{color:var(--muted);font-size:12px;line-height:1.5}
     .install-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:35px}
-    .install-card{padding:25px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
-    .install-card .num{color:var(--pink);font:10px var(--mono);letter-spacing:.1em}
-    .install-card h3{margin:18px 0 9px;font:500 14px/1.4 var(--mono)}
-    .install-card p{color:var(--muted);font-size:13px;line-height:1.6}
     .mini-code{display:block;margin-top:16px;padding:14px;overflow:auto;border:1px solid var(--line-soft);border-radius:7px;background:#08070b;color:#cbc5ce;font:10.5px/1.7 var(--mono);white-space:pre}
+    .install-section{padding:105px 0;border-bottom:1px solid var(--line)}
+    .install-head{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr);gap:60px;align-items:end}
+    .install-head h2{margin:25px 0 0;max-width:760px;font:500 clamp(48px,6.5vw,84px)/.92 var(--serif);letter-spacing:-.052em}
+    .install-head>p{max-width:510px;margin:0 0 7px;color:var(--muted);font-size:15px;line-height:1.75}
+    .install-section .install-grid{grid-template-columns:minmax(0,1.28fr) minmax(0,.82fr);gap:18px;margin-top:48px;align-items:stretch}
+    .router-install{display:grid;grid-template-columns:minmax(220px,.7fr) minmax(0,1.3fr);gap:24px;align-items:center;margin-top:30px;padding:20px 24px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+    .router-install .num{color:var(--pink);font:10px/1.5 var(--mono);letter-spacing:.13em}
+    .router-install h3{margin:9px 0 5px;font:500 16px/1.35 var(--sans)}
+    .router-install p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+    .router-install .mini-code{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px}
+    .router-install-command{position:relative;min-width:0}
+    .router-install-command .mini-code{padding-right:68px}
+    .router-install-command .copy{position:absolute;top:8px;right:8px}
+    .hook-install-command{position:relative;min-width:0}
+    .hook-install-command .mini-code{padding-right:68px}
+    .hook-install-command .copy{position:absolute;top:8px;right:8px}
+    .install-step{min-width:0;padding:30px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.012))}
+    .install-step .num{color:var(--pink);font:10px/1.5 var(--mono);letter-spacing:.13em}
+    .install-step h3{margin:18px 0 10px;font:500 20px/1.3 var(--sans);letter-spacing:-.025em}
+    .install-step p{margin:0;color:var(--muted);font-size:14px;line-height:1.7}
+    .hook-provider{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0 12px;padding:14px;border:1px solid var(--line);border-radius:8px;min-width:0}
+    .hook-provider legend{padding:0 7px;color:var(--muted);font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase}
+    .hook-provider label{display:inline-flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:6px;background:rgba(0,0,0,.16);color:#d8d2da;font-size:12px;line-height:1.2;cursor:pointer;transition:border-color .18s,background .18s,color .18s}
+    .hook-provider label:has(input:checked){border-color:rgba(255,66,190,.45);background:var(--pink-soft);color:var(--text)}
+    .hook-provider input{margin:0;accent-color:var(--pink)}
+    .hook-command-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--muted);font:10px/1.5 var(--mono)}
+    .copy{flex:none;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:rgba(255,255,255,.045);color:var(--text);font-size:10px;cursor:pointer}
+    .copy:hover{border-color:rgba(255,66,190,.5)}
+    .install-step .mini-code{width:100%;margin-top:10px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px;line-height:1.75}
+    .install-step>div[aria-live] .mini-code{margin-top:20px}
+    .install-step .hook-install-note{margin-top:15px;font-size:12px;line-height:1.65}
+    .hook-install-note a{color:#e9a1d3;text-decoration:underline;text-decoration-color:rgba(255,66,190,.35);text-underline-offset:3px}
+    .hook-behavior{display:grid;grid-template-columns:minmax(220px,.72fr) minmax(0,1.28fr);gap:45px;align-items:center;margin-top:18px;padding:27px 30px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.018)}
+    .hook-behavior .section-id{margin-bottom:16px}
+    .hook-behavior h3{margin:0;font:500 20px/1.35 var(--sans);letter-spacing:-.02em}
+    .hook-behavior>p{margin:0;color:var(--muted);font-size:13px;line-height:1.75}
     .cta{padding:110px 0 120px;text-align:center}
     .cta h2{margin:30px auto 22px;max-width:850px}
     .cta p{max-width:650px;margin:auto;color:var(--muted);font-size:15px;line-height:1.7}
@@ -151,6 +183,11 @@
     @media(max-width:900px){
       .hero{grid-template-columns:1fr;min-height:auto;gap:50px}
       .hero-aside{max-width:420px}
+      .install-head{grid-template-columns:1fr;gap:22px}
+      .install-head>p{max-width:680px}
+      .install-section .install-grid{grid-template-columns:1fr 1fr}
+      .router-install{grid-template-columns:1fr;gap:14px}
+      .hook-behavior{grid-template-columns:1fr;gap:16px}
       .flow{grid-template-columns:1fr}
       .flow-step{min-height:auto;border-right:1px solid var(--line)!important;border-radius:0!important}
       .flow-step:first-child{border-radius:9px 9px 0 0!important}.flow-step:last-child{border-radius:0 0 9px 9px!important}
@@ -169,6 +206,11 @@
       .section{display:block;padding:80px 0}
       .section-no{margin-bottom:35px}
       .hook-grid,.install-grid{grid-template-columns:1fr}
+      .install-section{padding:80px 0}
+      .install-section .install-grid{grid-template-columns:1fr;gap:12px;margin-top:32px}
+      .router-install{padding:18px}
+      .install-step{padding:22px}
+      .hook-behavior{padding:22px}
       footer{display:block}footer span{display:block;margin-top:8px}
     }
   </style>
@@ -179,10 +221,10 @@
     <nav class="nav">
       <a class="brand" href="#"><i class="dot"></i> harness-router</a>
       <div class="nav-links">
+        <a href="#install">install</a>
         <a href="#loop">loop</a>
         <a href="#decision">decision</a>
-        <a href="#hooks">hooks</a>
-        <a href="#install">install</a>
+        <a href="#codex-hook">hooks</a>
         <a href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">github ↗</a>
       </div>
     </nav>
@@ -218,6 +260,8 @@
     </div>
 
     <main>
+
+
       <section class="section" id="loop">
         <div class="section-no">01 · loop</div>
         <div class="content">
@@ -357,13 +401,27 @@
       <section class="install-section" id="codex-hook">
         <div class="install-head">
           <div>
-            <div class="section-id">$ 06 · Project Hooks</div>
+            <div class="section-id">$ 04 · Project Hooks</div>
             <h2>Discover tools. Own the next step.</h2>
           </div>
           <p>
             Choose Codex, Claude Code, ohmypi, Antigravity, or DeepSeek Harness. The integration reads the available tools,
             then uses Harness Router to precompute and enforce the next tool where the harness allows it.
           </p>
+        </div>
+
+        <div class="router-install" id="install">
+          <div>
+            <div class="num">00 · INSTALL ROUTER</div>
+            <h3>Install Harness Router</h3>
+            <p>Install the router once before adding a project hook.</p>
+          </div>
+          <div class="router-install-command">
+            <code class="mini-code" id="router-install-command">uv tool install --force \
+  --with 'mcp>=2,&lt;3' \
+  'git+https://github.com/Protocol-Lattice/harness-router.git@main'</code>
+            <button class="copy" id="router-install-copy" type="button" aria-label="Copy Harness Router installation command">copy</button>
+          </div>
         </div>
 
         <div class="install-grid">
@@ -388,10 +446,12 @@
             </fieldset>
             <div class="hook-command-toolbar">
               <span id="hook-install-requirements">Project root · Python 3.11+</span>
+            </div>
+            <div class="hook-install-command">
+              <code class="mini-code" id="hook-install-command">curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider codex</code>
               <button class="copy" id="hook-install-copy" type="button" data-copy="" aria-label="Copy Codex hook installation command">copy</button>
             </div>
-            <code class="mini-code" id="hook-install-command">curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
-  | python3 - --provider codex</code>
             <p class="hook-install-note">
               Keeps existing settings and other hooks. Backs up changed files. Safe to run again.
               <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/scripts/install_hook.py">View installer ↗</a>
@@ -523,47 +583,6 @@ bun run typecheck</code>
       </section>
 
 
-      <section class="section" id="install">
-        <div class="section-no">05 · install</div>
-        <div class="content">
-          <h2>Install the layer.<br><em>Keep the harness.</em></h2>
-          <p class="copy">
-            Harness Router is designed to sit beside the existing agent harness rather than replace its
-            authentication, approvals or execution environment.
-          </p>
-
-          <div class="install-grid">
-            <article class="install-card">
-              <div class="num">01 · INSTALL</div>
-              <h3>Install the router</h3>
-              <p>Install the current main branch as an isolated <code>uv</code> tool.</p>
-              <code class="mini-code">uv tool install --force \
-  --with 'mcp>=2,<3' \
-  'git+https://github.com/Protocol-Lattice/harness-router.git@main'</code>
-            </article>
-            <article class="install-card">
-              <div class="num">02 · HOOK</div>
-              <h3>Install a provider hook</h3>
-              <p>Run the project installer and choose the harness you want to integrate.</p>
-              <code class="mini-code">curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
-  | python3 - --provider codex</code>
-            </article>
-            <article class="install-card">
-              <div class="num">03 · RUN</div>
-              <h3>Start a fresh session</h3>
-              <p>The hook discovers the runtime tool context and enters the decision lifecycle.</p>
-              <code class="mini-code">pre_decision
-    ↓
-route / route_mcts
-    ↓
-tool
-    ↓
-post_tool_use</code>
-            </article>
-          </div>
-        </div>
-      </section>
-
       <section class="cta">
         <div class="eyebrow">$ harness-router</div>
         <h2>Control the <em>next step.</em></h2>
@@ -584,5 +603,67 @@ post_tool_use</code>
       <span>Decide. Execute. Observe. Decide again.</span>
     </footer>
   </div>
+  <script>
+    const hookProviders = Array.from(document.querySelectorAll('input[name="hook-provider"]'));
+    const hookProviderDetails = Array.from(document.querySelectorAll('[data-hook-provider-details]'));
+    const hookInstallCommand = document.getElementById('hook-install-command');
+    const hookInstallRequirements = document.getElementById('hook-install-requirements');
+    const hookInstallCopy = document.getElementById('hook-install-copy');
+
+    function selectHookProvider(provider) {
+      hookProviderDetails.forEach((details) => {
+        details.hidden = details.dataset.hookProviderDetails !== provider;
+      });
+
+      const command = [
+        'curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py ' + '\\',
+        `  | python3 - --provider ${provider}`,
+      ].join('\n');
+      const label = hookProviders.find((input) => input.value === provider)?.nextElementSibling.textContent ?? provider;
+      hookInstallCommand.textContent = command;
+      hookInstallRequirements.textContent = provider === 'ohmypi'
+        ? 'Project root · Python 3.11+ · Bun'
+        : 'Project root · Python 3.11+';
+      hookInstallCopy.dataset.copy = command;
+      hookInstallCopy.setAttribute('aria-label', `Copy ${label} hook installation command`);
+    }
+
+    hookProviders.forEach((input) => {
+      input.addEventListener('change', () => selectHookProvider(input.value));
+    });
+
+    selectHookProvider(hookProviders.find((input) => input.checked)?.value ?? 'codex');
+    document.getElementById('router-install-copy').dataset.copy =
+      document.getElementById('router-install-command').textContent;
+
+    function legacyCopy(text) {
+      if (typeof document.execCommand !== 'function') return false;
+      const field = document.createElement('textarea');
+      field.value = text;
+      field.setAttribute('readonly', '');
+      field.style.position = 'fixed';
+      field.style.opacity = '0';
+      document.body.append(field);
+      field.select();
+      const copied = document.execCommand('copy');
+      field.remove();
+      return copied;
+    }
+
+    document.querySelectorAll('.copy').forEach((button) => {
+      button.addEventListener('click', async () => {
+        let copied = false;
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(button.dataset.copy);
+            copied = true;
+          }
+        } catch {}
+        if (!copied) copied = legacyCopy(button.dataset.copy);
+        button.textContent = copied ? 'copied' : 'failed';
+        window.setTimeout(() => { button.textContent = 'copy'; }, 1600);
+      });
+    });
+  </script>
 </body>
 </html>
