@@ -13,7 +13,9 @@ def main():
     except Exception:return 0
     tools=data.get("tools",[]) if isinstance(data,dict) else data
     req={"harness":"antigravity","hook":"PreInvocation","cwd":str(ROOT),
-         "session_id":str(p.get("conversationId") or "default"),"goal":goal[:1600],"tools":tools}
+         "session_id":str(p.get("conversationId") or "default"),"decision_id":str(p.get("decisionId") or p.get("turnId") or ""),
+         "goal":goal[:1600],"observation":str(p.get("observation") or p.get("toolResult") or ""),
+         "last_action":p.get("last_action") or p.get("lastAction"),"tools":tools}
     try:
       r=subprocess.run([sys.executable,str(ROOT/"hooks"/"pre_decision.py")],input=json.dumps(req),
                        text=True,capture_output=True,timeout=4)
