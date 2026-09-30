@@ -21,6 +21,7 @@ from urllib.request import Request, urlopen
 
 REPOSITORY = "Protocol-Lattice/harness-router"
 BACKUP_SUFFIX = ".harness-router.bak"
+COMMON_ASSETS = ("hooks/pre_decision.py", "hooks/post_tool_use.py")
 PROVIDERS = {
     "codex": ("Codex", ".codex/hooks.json"),
     "claude": ("Claude Code", ".claude/settings.json"),
@@ -37,6 +38,8 @@ OHMYPI_ASSETS = (
 )
 ANTIGRAVITY_ASSETS = (
     ".antigravity/hooks/pre_tool_use.py",
+    ".antigravity/hooks/post_tool_use.py",
+    ".antigravity/hooks/pre_invocation.py",
     ".antigravity/hooks/discover_tools.py",
 )
 DEEPSEEK_HOOK_CONFIG = {
@@ -52,11 +55,22 @@ DEEPSEEK_HOOK_CONFIG = {
                     }
                 ]
             }
+        ],
+        "PostToolUse": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 .dsh/hooks/hook.py",
+                        "timeout": 5,
+                    }
+                ]
+            }
         ]
     },
 }
 DEEPSEEK_PATCH = """# Harness Router integration for DeepSeek Harness.
-# DeepSeek maps the Codex PreToolUse bridge onto tools/pre-execute.
+# DeepSeek maps the bridge onto pre/post tool execution points.
 # Start dsh with: dsh --patch .dsh/harness-router.patch.yml
 
 - id: harness-router-hooks-codex
@@ -105,7 +119,7 @@ def owned_handler(handler: dict[str, Any], provider: str) -> bool:
     if provider == "deepseek":
         scripts = [".dsh/hooks/hook.py"]
     else:
-        scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_decision", "pre_tool_use")]
+        scripts = [f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_decision", "pre_tool_use", "post_tool_use", "pre_invocation")]
     return any(
         word == script or word.endswith("/" + script) for word in words for script in scripts
     )
@@ -356,7 +370,7 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
             raise ValueError(f"Incomplete {provider} hook template")
         # Fetch and validate every asset before modifying any project files.
         assets = ANTIGRAVITY_ASSETS if provider == "antigravity" else (
-            f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_tool_use")
+            f".{provider}/hooks/{name}.py" for name in ("discover_tools", "pre_tool_use", "post_tool_use")
         )
         for relative in assets:
             data = asset(relative, source, ref)
