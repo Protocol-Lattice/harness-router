@@ -1,443 +1,57 @@
 #!/usr/bin/env python3
-"""Portable Antigravity PreToolUse hook; --stop resets its redirect guard.
-
-Use the native camelCase payload and named hook configuration. Abstaining emits
-no permission decision: only a confident alternative can produce a denial.
-"""
-
+"""Antigravity PreToolUse: validate the precomputed next-tool decision locally."""
 from __future__ import annotations
-
-import argparse
-from datetime import datetime, timezone
-import hashlib
-import json
-import math
-import os
-import queue
-import re
-import shlex
-import shutil
-import socket
-import subprocess
-import sys
-import tempfile
-import threading
-import time
-from difflib import SequenceMatcher
+import argparse, hashlib, json, os, sys
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MAX_CATALOG_BYTES = 1_000_000
+ROOT=Path(__file__).resolve().parents[2]
 
-
-def is_router(name: str) -> bool:
-    return "harness_router" in name.lower().replace("-", "_")
-
-
-def normalize_tools(raw: Any) -> list[dict[str, Any]]:
-    if isinstance(raw, dict):
-        raw = raw.get("tools", [])
-    if not isinstance(raw, list):
-        return []
-
-    tools: dict[str, dict[str, Any]] = {}
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        name = item.get("name")
-        if not isinstance(name, str) or not name.strip():
-            continue
-        tool = dict(item)
-        tool["name"] = name.strip()
-        annotations = tool.get("annotations") or {}
-        if not isinstance(annotations, dict):
-            annotations = {}
-        category, risk = "general", "medium"
-        if annotations.get("destructiveHint", annotations.get("destructive")) is True:
-            category, risk = "mutate", "high"
-        elif annotations.get("readOnlyHint", annotations.get("readOnly")) is True:
-            category, risk = "inspect", "low"
-        tool.setdefault("description", "")
-        tool.setdefault("category", category)
-        tool.setdefault("risk", risk)
-        tool.setdefault("input_schema", tool.get("inputSchema") or tool.get("parameters"))
-        tool.setdefault("output_schema", tool.get("outputSchema"))
-        tool.setdefault("source", "runtime")
-        tools[tool["name"]] = tool
-    return list(tools.values())
-
-
-def tokens(value: Any) -> set[str]:
-    text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(value))
-    return {token.lower() for token in re.split(r"[^a-zA-Z0-9]+", text) if len(token) >= 2}
-
-
-def shortlist(tools: list[dict[str, Any]], current: str, goal: str) -> list[dict[str, Any]]:
-    pending = next((tool for tool in tools if tool["name"] == current), None)
-    if pending is None or is_router(str(pending.get("serverName", ""))):
-        return []
+def main(argv=None)->int:
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--stop",action="store_true")
+    args=parser.parse_args(argv)
+    try:p=json.load(sys.stdin)
+    except (OSError,ValueError): p={}
+    if not isinstance(p,dict):
+        print("{}"); return 0
+    if args.stop:
+        print("{}"); return 0
+    call=p.get("toolCall") if isinstance(p.get("toolCall"),dict) else {}
+    current=str(call.get("name") or "").strip()
+    if not current or "harness_router" in current.lower().replace("-","_"):
+        print("{}"); return 0
+    conversation=str(p.get("conversationId") or "default")
+    path=ROOT/".harness-router"/"sessions"/f"{conversation}.decision.json"
     try:
-        limit = min(32, max(2, int(os.environ.get("HARNESS_ROUTER_PRETOOL_MAX_CANDIDATES", "8"))))
-    except ValueError:
-        limit = 8
-
-    def score(tool: dict[str, Any]) -> float:
-        return (
-            SequenceMatcher(None, current.lower(), tool["name"].lower()).ratio() * 10
-            + len(tokens(tool["name"]) & tokens(current)) * 4
-            + len(tokens(tool.get("description")) & tokens(pending.get("description"))) * 1.5
-            + len(tokens(goal) & (tokens(tool["name"]) | tokens(tool.get("description")))) * 0.75
-            + (2 if tool.get("category") == pending.get("category") else 0)
-        )
-
-    others = [
-        tool
-        for tool in tools
-        if tool["name"] != current
-        and not is_router(tool["name"])
-        and not is_router(str(tool.get("serverName", "")))
-    ]
-    return [pending, *sorted(others, key=score, reverse=True)[: limit - 1]]
-
-
-class MCPClient:
-    """Line-delimited JSON-RPC with a deadline, including partial-line reads."""
-
-    def __init__(self, binary: str, cwd: str, timeout: float) -> None:
-        self.deadline = time.monotonic() + timeout
-        self.proc = subprocess.Popen(
-            [binary],
-            cwd=cwd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            bufsize=1,
-        )
-        self.messages: queue.Queue[str | None] = queue.Queue()
-        self.next_id = 0
-        self.reader = threading.Thread(target=self.read, daemon=True)
-        self.reader.start()
-
-    def read(self) -> None:
-        try:
-            assert self.proc.stdout is not None
-            for line in self.proc.stdout:
-                self.messages.put(line)
-        except (OSError, UnicodeError):
-            pass
-        finally:
-            self.messages.put(None)
-
-    def send(self, message: dict[str, Any]) -> None:
-        assert self.proc.stdin is not None
-        self.proc.stdin.write(json.dumps({"jsonrpc": "2.0", **message}) + "\n")
-        self.proc.stdin.flush()
-
-    def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        self.next_id += 1
-        self.send({"id": self.next_id, "method": method, "params": params})
-        while True:
-            remaining = self.deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("Harness Router timed out")
-            try:
-                line = self.messages.get(timeout=remaining)
-            except queue.Empty as exc:
-                raise TimeoutError("Harness Router timed out") from exc
-            if line is None:
-                raise RuntimeError("Harness Router closed its output")
-            try:
-                message = json.loads(line)
-            except ValueError:
-                continue
-            if not isinstance(message, dict) or message.get("id") != self.next_id:
-                continue
-            if "error" in message:
-                raise RuntimeError("Harness Router returned an MCP error")
-            result = message.get("result")
-            return result if isinstance(result, dict) else {}
-
-    def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        result = self.request("tools/call", {"name": name, "arguments": arguments})
-        if result.get("isError"):
-            return {}
-        structured = result.get("structuredContent")
-        if isinstance(structured, dict):
-            return structured
-        for block in result.get("content") or []:
-            if not isinstance(block, dict) or block.get("type") != "text":
-                continue
-            try:
-                parsed = json.loads(block.get("text", ""))
-            except (ValueError, TypeError):
-                continue
-            if isinstance(parsed, dict):
-                return parsed
-        return {}
-
-    def close(self) -> None:
-        if self.proc.poll() is None:
-            self.proc.terminate()
-            try:
-                self.proc.wait(timeout=0.2)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
-                self.proc.wait(timeout=0.2)
-        self.reader.join(timeout=0.2)
-        if self.proc.stdin:
-            self.proc.stdin.close()
-        if self.proc.stdout and not self.reader.is_alive():
-            self.proc.stdout.close()
-
-
-def env_number(name: str, default: float) -> float:
-    value = float(os.environ.get(name, default))
-    if not math.isfinite(value):
-        raise ValueError("Expected a finite setting")
-    return value
-
-
-def _route_via_daemon(
-    goal: str,
-    observation: str,
-    candidates: list[dict[str, Any]],
-    timeout: float,
-) -> dict[str, Any] | None:
-    """Use an existing local router daemon before starting the CLI subprocess."""
-    if os.name == "nt" or os.environ.get("HARNESS_ROUTER_NO_DAEMON") == "1":
-        return None
-    configured = os.environ.get("HARNESS_ROUTER_SOCKET")
-    if configured:
-        path = configured
-    else:
-        uid = str(os.getuid()) if hasattr(os, "getuid") else str(os.getpid())
-        path = str(Path(tempfile.gettempdir()) / f"harness-router-{uid}.sock")
-    request = {
-        "goal": goal,
-        "observation": observation,
-        "last_action": None,
-        "tools": [
-            {key: tool.get(key) for key in ("name", "description", "category", "risk")}
-            for tool in candidates
-        ],
-        "mode": "jev_only",
-        "direct_threshold": 0.85,
-        "fallback_threshold": 0.60,
-        "hierarchical_threshold": 24,
-        "route_cache_size": 0,
-    }
-    wire = (json.dumps(request, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+        decision=json.loads(path.read_text(encoding="utf-8"))
+    except (OSError,ValueError):
+        print("{}"); return 0
+    if not isinstance(decision,dict): print("{}"); return 0
     try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            client.settimeout(timeout)
-            client.connect(path)
-            client.sendall(wire)
-            response = bytearray()
-            while len(response) <= 64 * 1024:
-                chunk = client.recv(4096)
-                if not chunk:
-                    break
-                response.extend(chunk)
-                if b"\n" in chunk:
-                    break
-        result = json.loads(response.split(b"\n", 1)[0])
-    except (OSError, ValueError, json.JSONDecodeError):
-        return None
-    if not isinstance(result, dict) or result.get("provider_requests", 0) < 1:
-        return None
-    return result
-
-
-def route(
-    binary: str | None,
-    cwd: str | Path,
-    goal: str,
-    observation: str,
-    current: str,
-    candidates: list[dict[str, Any]],
-) -> tuple[dict[str, Any], str]:
-    timeout = float(os.environ.get("HARNESS_ROUTER_PRETOOL_TIMEOUT", "4.0"))
-    if timeout <= 0:
-        return {}, "route"
-    daemon_result = _route_via_daemon(goal, observation, candidates, timeout)
-    if daemon_result is not None:
-        return daemon_result, "route"
-    if not binary:
-        return {}, "route"
-    tools_json = json.dumps(
-        [
-            {key: tool.get(key) for key in ("name", "description", "category", "risk")}
-            for tool in candidates
-        ],
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+        generated=datetime.fromisoformat(str(decision.get("generated_at","")).replace("Z","+00:00"))
+        ttl=float(os.environ.get("HARNESS_ROUTER_PREDECISION_TTL","30"))
+        if (datetime.now(UTC)-generated).total_seconds()>ttl: print("{}"); return 0
+        confidence=float(decision.get("confidence"))
+        threshold=float(os.environ.get("HARNESS_ROUTER_PREDECISION_THRESHOLD","0.85"))
+    except (TypeError,ValueError):
+        print("{}"); return 0
+    selected=decision.get("tool")
+    if not isinstance(selected,str) or not selected or selected==current or confidence<threshold:
+        print("{}"); return 0
+    key=f"{conversation}:{decision.get('state_key','')}:{current}"
+    marker=ROOT/".harness-router"/"sessions"/f"{hashlib.sha256(key.encode()).hexdigest()}.rerouted"
     try:
-        proc = subprocess.run(
-            [
-                binary,
-                "route",
-                "--mode", "jev_only",
-                "--verbose",
-                "--no-cache",
-                "--goal", goal,
-                "--observation", observation,
-                "--tools-json", tools_json,
-            ],
-            cwd=str(cwd),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=os.environ.copy(),
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return {}, "route"
-    if proc.returncode != 0:
-        return {}, "route"
-    try:
-        result = json.loads(proc.stdout.strip())
-    except json.JSONDecodeError:
-        return {}, "route"
-    if not isinstance(result, dict) or result.get("provider_requests", 0) < 1:
-        return {}, "route"
-    return result, "route"
-
-
-def load_tools(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    raw_json = os.environ.get("HARNESS_ROUTER_ANTIGRAVITY_TOOLS_JSON", "").strip()
-    if raw_json:
-        try:
-            return normalize_tools(json.loads(raw_json))
-        except json.JSONDecodeError:
-            return []
-    conversation = payload.get("conversationId")
-    if not isinstance(conversation, str) or not conversation.strip():
-        return []
-    snapshot = PROJECT_ROOT / ".antigravity/harness-router-tools.json"
-    try:
-        data = json.loads(snapshot.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    return normalize_tools(data)
-
-
-def redirect_marker(payload: dict[str, Any]) -> Path:
-    conversation = str(payload.get("conversationId") or "default")
-    digest = hashlib.sha256(conversation.encode("utf-8")).hexdigest()
-    return PROJECT_ROOT / ".antigravity/harness-router/sessions" / f"{digest}.redirected"
-
-
-def stop(payload: dict[str, Any]) -> dict[str, Any]:
-    if payload.get("fullyIdle") is not True:
-        return {}
-    marker = redirect_marker(payload)
-    try:
-        marker.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError:
-        return {}
-    return {}
-
-
-def handle(payload: dict[str, Any]) -> dict[str, Any]:
-    call = payload.get("toolCall")
-    if not isinstance(call, dict) or not isinstance(call.get("args"), dict):
-        return {}
-    current = call.get("name")
-    if not isinstance(current, str) or not current or is_router(current):
-        return {}
-    marker = redirect_marker(payload)
-    if marker is None or marker.exists():
-        return {}
-    tools = load_tools(payload)
-    intent = call["args"].get("Description") or call["args"].get("Instruction") or ""
-    goal = (
-        f"Choose the best next Antigravity tool for the intent in the pending tool call. {intent}"
-    )[:1600]
-    candidates = shortlist(tools, current, goal)
-    binary = os.environ.get("HARNESS_ROUTER_BIN") or shutil.which("harness-router")
-    if len(candidates) < 2:
-        return {}
-    observation = (
-        f"Antigravity is about to call {current!r}. "
-        f"tool_input={json.dumps(call['args'], ensure_ascii=False)[:600]}"
-    )[:900]
-    result, mode = route(binary, str(PROJECT_ROOT), goal, observation, current, candidates)
-    selected, confidence = result.get("tool"), result.get("confidence")
-    minimum = env_number("HARNESS_ROUTER_PRETOOL_MIN_CONFIDENCE", 0.80)
-    if (
-        result.get("fallback")
-        or not isinstance(selected, str)
-        or selected == current
-        or selected not in {tool["name"] for tool in candidates}
-        or isinstance(confidence, bool)
-        or not isinstance(confidence, (int, float))
-        or not math.isfinite(confidence)
-        or not 0 <= minimum <= confidence <= 1
-    ):
-        return {}
-    # Atomically claim the one redirect even when several tool hooks run at once.
-    # If state cannot be saved, main abstains instead of risking a redirect loop.
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        descriptor = os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        marker.parent.mkdir(parents=True,exist_ok=True)
+        fd=os.open(marker,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
+        os.close(fd)
     except FileExistsError:
-        return {}
-    os.close(descriptor)
-    return {
-        "decision": "deny",
-        "reason": (
-            f"Harness Router ({mode}) recommends {selected!r} instead of {current!r} "
-            f"at confidence {confidence:.3f}. Re-plan once, keeping the user's goal and "
-            "the tool's required arguments. Normal permissions still apply."
-        ),
-    }
-
-
-def _run_hook(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stop", action="store_true", help="reset when Antigravity becomes idle")
-    args = parser.parse_args(argv)
-    try:
-        payload = json.load(sys.stdin)
-        handler = stop if args.stop else handle
-        result = handler(payload) if isinstance(payload, dict) else {}
-    except (OSError, ValueError, TypeError, RuntimeError, subprocess.SubprocessError):
-        result = {}
-    print(json.dumps(result))
+        print("{}"); return 0
+    except OSError:
+        print("{}"); return 0
+    print(json.dumps({"decision":"deny","reason":
+        f"Harness Router precomputed {selected!r} at confidence {confidence:.3f}, "
+        f"but Antigravity selected {current!r}. Re-plan once."}))
     return 0
 
-
-def main(argv: list[str] | None = None) -> int:
-    started = time.monotonic()
-    started_at = datetime.now(timezone.utc)
-    try:
-        return _run_hook(argv)
-    finally:
-        event = {
-            "event": "harness_router.hook_timing",
-            "hook": "antigravity",
-            "started_at": started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-            "duration_ms": round((time.monotonic() - started) * 1000, 3),
-        }
-        print(json.dumps(event, separators=(",", ":")), file=sys.stderr)
-        _append_hook_timing(event, PROJECT_ROOT)
-
-
-def _append_hook_timing(event: dict[str, Any], root: Path) -> None:
-    try:
-        path = root / "hook-timings.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as log_file:
-            log_file.write(json.dumps(event, separators=(",", ":")) + "\n")
-    except OSError:
-        pass
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__=="__main__": raise SystemExit(main())
