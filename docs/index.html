@@ -1465,9 +1465,9 @@
           </h1>
           <p class="hero-copy">
             <strong>Install once. Route tool calls across every agent harness.</strong><br>
-            <strong>harness-router</strong> works two ways: use the skill to stop model reasoning
-            about obvious tool calls, or let <code>PreToolUse</code> intercept and route calls automatically.
-            Fast <code>route</code> handles ordinary choices; real ambiguity can escalate to Jev-backed MCTS.
+            <strong>harness-router</strong> works two ways: use the skill for explicit routing,
+            or let hooks precompute the next tool automatically. Fast <code>route</code>
+            handles ordinary choices; real ambiguity can escalate to Jev-backed MCTS.
           </p>
 
           <div class="install">
@@ -1519,20 +1519,20 @@
         <div>
           <h2>Stop reasoning about <em>obvious tool calls.</em></h2>
           <p class="story-copy">
-            With the skill, Codex can delegate closed-choice tool selection to Harness Router
-            instead of spending a full model reasoning step on an obvious choice.
-            Prefer automatic enforcement? The <code>PreToolUse</code> hook applies the same routing layer
-            before execution without requiring the model to invoke the skill explicitly.
+            With the skill, Codex can delegate closed-choice tool selection to Harness Router.
+            With hooks enabled, the Router precomputes the next decision after each tool result.
+            Where the harness exposes stronger control, the integration can enforce that decision
+            before the next model/tool step without requiring an explicit Router tool call.
           </p>
         </div>
         <div class="decision-stack">
           <div class="decision-card active">
             <b><span>known file</span><span>→ read</span></b>
-            <p>The hook validates the call against the discovered tool inventory before execution.</p>
+            <p>The hook keeps the next decision aligned with the live discovered tool inventory.</p>
           </div>
           <div class="decision-card active">
             <b><span>edit finished</span><span>→ test</span></b>
-            <p>Fast routing keeps deterministic transitions cheap while still checking the selected tool.</p>
+            <p>Fast routing precomputes the next state transition before the following tool step.</p>
           </div>
           <div class="decision-card">
             <b><span>4 plausible tools</span><span>→ route</span></b>
@@ -1866,11 +1866,11 @@ tool_timeout_sec = 5
         <div class="install-head">
           <div>
             <div class="section-id">$ 06 · Project Hooks</div>
-            <h2>Discover tools. Route every call.</h2>
+            <h2>Discover tools. Own the next step.</h2>
           </div>
           <p>
             Choose Codex, Claude Code, ohmypi, Antigravity, or DeepSeek Harness. The integration reads the available tools,
-            then uses Harness Router to check tool choices before execution.
+            then uses Harness Router to precompute and enforce the next tool where the harness allows it.
           </p>
         </div>
 
