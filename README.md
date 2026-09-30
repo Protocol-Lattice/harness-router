@@ -9,166 +9,175 @@
 </p>
 
 <p align="center">
-  Route the next tool through a fast cache/Jev path, escalate ambiguous decisions to bounded MCTS, and integrate the routing decision loop through native harness hooks or an explicit skill.
-  <br>
-  Cache first. Jev for ordinary ambiguity. MCTS when downstream consequences matter.
+  Intercept the host harness at its native control point, route the next tool with cache + Jev,
+  and escalate ambiguous multi-step choices to bounded MCTS.
 </p>
 
 <p align="center">
   <a href="https://harness-router.vercel.app/">Website</a>
   ·
-  <a href="#codex-pretooluse-hook">Codex hook</a>
+  <a href="#architecture">Architecture</a>
   ·
-  <a href="#claude-code-pretooluse-hook">Claude Code hook</a>
+  <a href="#codex">Codex</a>
   ·
-  <a href="#ohmypi-tool-call-hook">ohmypi hook</a>
+  <a href="#claude-code">Claude Code</a>
   ·
-  <a href="#antigravity-pretooluse-hook">Antigravity hook</a>
+  <a href="#ohmypi">ohmypi</a>
   ·
-  <a href="#codex-skill">Codex skill</a>
+  <a href="#antigravity">Antigravity</a>
   ·
-  <a href="#native-mcp-server">MCP</a>
+  <a href="#deepseek-harness">DeepSeek Harness</a>
+  ·
+  <a href="#mcp">MCP</a>
 </p>
 
 ---
 
-## What it does
+## What is Harness Router?
 
-AI coding harnesses already have a decision loop:
+AI agents repeatedly answer one operational question:
 
-```text
-observe state
-    ↓
-decide what to do next
-    ↓
-generate a tool call
-    ↓
-execute tool
-    ↓
-observe result
-    ↺
-```
+> **Which tool should happen next?**
 
-Harness Router adds a dedicated routing decision to that loop.
+Harness Router is a framework-agnostic decision layer for that question.
 
-It does **not** replace the model's reasoning, argument generation, permissions, or tool execution. It specializes in one narrower problem:
-
-> **Given the current state and a set of plausible tools, which tool should be considered next?**
-
-The routing path is deliberately layered:
+It receives compact state plus candidate tools and returns a routing decision:
 
 ```text
-                    current state
-                         │
-                         ▼
-                  ┌──────────────┐
-                  │ Route cache  │
-                  └──────┬───────┘
-                         │ miss
-                         ▼
-                  ┌──────────────┐
-                  │     Jev      │
-                  │ fast route   │
-                  └──────┬───────┘
-                         │ ambiguous
-                         ▼
-                  ┌──────────────┐
-                  │     MCTS     │
-                  │ bounded search│
-                  └──────┬───────┘
-                         │
-                         ▼
-                    next tool
+state + candidate tools
+        │
+        ▼
+   Harness Router
+        │
+   ┌────┴────┐
+   │         │
+ cache      Jev
+   │         │
+   │      ambiguous
+   │         │
+   │        MCTS
+   └────┬────┘
+        ▼
+   next tool
 ```
 
-The cache avoids repeating identical decisions. Jev handles ordinary ambiguity. MCTS is available when the choice depends on downstream consequences and a side-effect-free simulator is available.
+The router is deliberately narrower than an agent planner.
 
-## Hook architecture
+It does **not** own:
 
-Harness Router integrates at the **host's actual hook/interception point**. The integration is intentionally host-specific: a hook can only control what that harness exposes.
+- user intent,
+- model reasoning,
+- tool argument generation,
+- permissions,
+- approvals,
+- sandboxing,
+- tool execution.
 
-The important distinction is:
+It owns the **tool-selection decision**.
 
-- **ohmypi** can temporarily restrict the active tool set before the next provider request, so routing participates directly in the next-tool decision.
-- **Codex, Claude Code, Antigravity, and DeepSeek Harness** expose pre-execution interception. Harness Router evaluates the pending call and can block a confident alternative, causing the host to re-plan.
-- The router never generates tool arguments, grants permissions, or executes tools.
+---
 
-### Common control flow
+# Architecture
+
+## The routing pipeline
+
+The decision engine uses the cheapest applicable path first:
 
 ```text
-user / task
-    │
-    ▼
-host harness / model
-    │
-    │  native hook / interception point
-    ▼
-Harness Router
-    │
-    ├── cache hit ───────────────┐
-    ├── Jev route ───────────────┤
-    └── optional MCTS ──────────┤
-                                ▼
-                         routing decision
-                                │
-                 ┌──────────────┴──────────────┐
-                 │                             │
-             same / fallback              different
-                 │                             │
-                 ▼                             ▼
-          normal execution              block / redirect
-                 │                             │
-                 ▼                             ▼
-              tool result                 host re-plans
-                 │                             │
-                 └──────────────┬──────────────┘
-                                ▼
-                         next host iteration
+                 routing request
+                       │
+                       ▼
+                ┌─────────────┐
+                │ Route cache │
+                └──────┬──────┘
+                       │ miss
+                       ▼
+                ┌─────────────┐
+                │     Jev     │
+                │ fast route  │
+                └──────┬──────┘
+                       │
+              low confidence /
+             deeper decision
+                       │
+                       ▼
+                ┌─────────────┐
+                │    MCTS     │
+                │ bounded     │
+                │ local search│
+                └──────┬──────┘
+                       │
+                       ▼
+                 route decision
 ```
 
-This is **not one universal replacement loop**. Each harness decides what happens after the hook returns.
+### Cache
 
-### Codex — `PreToolUse`
+Repeated compact decisions can be served without invoking the decision provider.
+
+### Jev
+
+Jev is the normal routing path for ambiguous tool choices.
+
+### MCTS
+
+MCTS is an optional escalation path when the best first action depends on downstream state. Search runs against a side-effect-free simulator; real tools are never executed during simulation.
+
+---
+
+# Harness integration
+
+Harness Router does **not** pretend that every harness exposes the same control flow.
+
+Each adapter uses the strongest native control point that the host actually provides.
+
+There are two integration patterns:
+
+1. **Control-point interception** — the harness has a pre-tool hook. Router evaluates the pending call and can allow it or request a re-plan.
+2. **Tool-surface control** — the harness lets the extension change the tools visible to the next model request. Router can directly constrain the next decision.
+
+```text
+                         HOST HARNESS
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│  user/task → model reasoning → tool selection → execution  │
+│                                  │                          │
+│                                  │ native hook              │
+│                                  ▼                          │
+│                         ┌─────────────────┐                 │
+│                         │ Harness Router  │                 │
+│                         │                 │                 │
+│                         │ cache → Jev     │                 │
+│                         │        → MCTS   │                 │
+│                         └────────┬────────┘                 │
+│                                  │                          │
+│                    allow / constrain / re-plan              │
+│                                  │                          │
+│                                  ▼                          │
+│                            tool execution                   │
+│                                  │                          │
+│                                  ▼                          │
+│                            tool result                      │
+│                                  │                          │
+│                                  └──► next model iteration  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The exact loop is host-specific.
+
+---
+
+## Codex
+
+Codex integration uses:
+
+- `SessionStart` for tool discovery,
+- `PreToolUse` for routing,
+- deny + re-plan when Router identifies a different high-confidence candidate.
 
 ```text
 Codex model
-    │
-    ▼
-proposes tool call
-    │
-    ▼
-PreToolUse hook
-    │
-    ▼
-Harness Router
-    ├─ cache
-    ├─ Jev route
-    └─ optional MCTS
-    │
-    ├─ same / fallback / error ──► allow original call
-    │
-    └─ confident different tool ─► deny once
-                                      │
-                                      ▼
-                               Codex re-plans
-                                      │
-                                      └──► next tool call
-                                              │
-                                              ▼
-                                           execute
-                                              │
-                                              ▼
-                                         tool result
-                                              │
-                                              └──► Codex model
-```
-
-`SessionStart` is used separately to build the tool catalog. It is discovery, not a second decision loop.
-
-### Claude Code — `PreToolUse`
-
-```text
-Claude Code model
     │
     ▼
 proposes tool call
@@ -178,112 +187,204 @@ PreToolUse
     │
     ▼
 Harness Router
-    ├─ cache
-    ├─ Jev route
-    └─ optional MCTS
     │
-    ├─ same / fallback / error ──► normal permission flow
+    ├── cache
+    ├── Jev
+    └── optional MCTS
     │
-    └─ confident different tool ─► deny + re-plan
+    ├── same / fallback / error ──► allow original call
+    │
+    └── different confident tool ─► deny once
                                       │
                                       ▼
-                                  Claude model
+                                Codex re-plans
                                       │
                                       ▼
-                                   tool call
+                                  new call
                                       │
                                       ▼
-                                   execution
+                                  execute
                                       │
-                                      └──► next model turn
+                                      ▼
+                                tool result
+                                      │
+                                      └────► Codex
 ```
 
-`SessionStart` publishes the live catalog used by `PreToolUse`. The router does not execute the selected tool or alter its arguments.
+`SessionStart` builds the tool catalog once per session. The routing hook uses a relevant subset instead of sending the complete registry on every decision.
 
-### ohmypi — active-tool control + `tool_call` guard
+Install:
 
-ohmypi is the integration with the strongest control point because its extension API can change the active tool surface **before the next provider request**.
+```bash
+curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider codex
+```
+
+The installer preserves existing hooks and settings and creates backups when modifying files.
+
+---
+
+## Claude Code
+
+Claude Code uses:
+
+- `SessionStart` for live tool discovery,
+- `PreToolUse` as the routing interception point,
+- deny + re-plan for a confident alternative.
 
 ```text
-user prompt / agent turn
-        │
-        ▼
-before_agent_start
-        │
-        ▼
+Claude model
+    │
+    ▼
+tool proposal
+    │
+    ▼
+PreToolUse
+    │
+    ▼
 Harness Router
-   ├─ cache
-   ├─ Jev route
-   └─ optional MCTS
-        │
-        ▼
-setActiveTools([selected])
-        │
-        ▼
-next provider request
-        │
-        ▼
-model sees selected active tool
-        │
-        ▼
-tool_call
-        │
-        ├─ expected selected tool ─► execute
-        │                              │
-        │                              ▼
-        │                          tool_result
-        │                              │
-        │                              ▼
-        │                    Router evaluates next state
-        │                              │
-        │                              └──► next provider request
-        │
-        └─ unexpected tool ─────────► defensive block
+    │
+    ├── cache → Jev → optional MCTS
+    │
+    ├── same / fallback ──────► normal permission flow
+    │
+    └── different tool ───────► deny + re-plan
+                                  │
+                                  ▼
+                              Claude model
+                                  │
+                                  ▼
+                              next call
 ```
 
-The original active-tool set is restored on fallback, timeout, low confidence, malformed output, or router failure. `tool_call` remains a defensive guard; the primary control point is `before_agent_start` + `setActiveTools()`.
+The hook never executes the selected tool and never rewrites its arguments.
 
-### Antigravity — `PreToolUse`
+See [the Claude integration guide](.claude/README.md).
+
+Install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider claude
+```
+
+---
+
+## ohmypi
+
+ohmypi exposes a stronger control point than a simple pre-execution hook.
+
+The extension can call `setActiveTools()` before the next provider request, so the router can constrain the tool surface the model sees.
+
+```text
+user / agent turn
+       │
+       ▼
+before_agent_start
+       │
+       ▼
+Harness Router
+       │
+       ├── cache
+       ├── Jev
+       └── optional MCTS
+       │
+       ▼
+setActiveTools([selected])
+       │
+       ▼
+next provider request
+       │
+       ▼
+model selects from controlled tools
+       │
+       ▼
+tool_call
+       │
+       ├── selected tool ──► execute
+       │                       │
+       │                       ▼
+       │                   tool_result
+       │                       │
+       │                       ▼
+       │                 next router decision
+       │                       │
+       │                       └──► next provider request
+       │
+       └── unexpected tool ──► defensive block
+```
+
+This is the closest integration to directly controlling the next-tool decision because the selected tool can be installed into the active tool surface before inference.
+
+The original active-tool set is restored on fallback, timeout, low confidence, malformed output, or router failure.
+
+See [the ohmypi integration guide](.omp/README.md).
+
+Install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider ohmypi
+```
+
+---
+
+## Antigravity
+
+Antigravity uses its native `PreToolUse` hook.
 
 ```text
 Antigravity model
     │
     ▼
-proposes tool call
+tool proposal
     │
     ▼
-PreToolUse hook
+PreToolUse
     │
     ▼
-live conversation tool inventory
+live tool inventory
     │
     ▼
 Harness Router
-    ├─ cache
-    ├─ Jev route
-    └─ optional MCTS
     │
-    ├─ same / fallback / error ──► normal execution path
+    ├── cache → Jev → optional MCTS
     │
-    └─ confident different tool ─► deny + re-plan
-                                      │
-                                      ▼
-                               Antigravity model
-                                      │
-                                      └──► next call
+    ├── same / fallback ──────► normal execution
+    │
+    └── different tool ───────► deny + re-plan
+                                  │
+                                  ▼
+                            Antigravity
+                                  │
+                                  ▼
+                              next call
 ```
 
-`Stop` is used as a redirect guard reset point. `PreToolUse` is the actual routing interception point; the hook does not execute or rewrite tool arguments.
+The adapter reads the live conversation tool inventory. It does not invent a fallback catalog when discovery fails.
 
-### DeepSeek Harness — `tools/pre-execute`
+`Stop` is used to reset the redirect guard.
 
-DeepSeek Harness reaches Harness Router through its supported Codex hook bridge:
+See [the Antigravity integration guide](.antigravity/README.md).
+
+Install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider antigravity
+```
+
+---
+
+## DeepSeek Harness
+
+DeepSeek Harness reaches the router through its supported Codex hook bridge:
 
 ```text
-DeepSeek Harness model
+DeepSeek model
     │
     ▼
-proposes tool call
+tool proposal
     │
     ▼
 tools/pre-execute
@@ -293,77 +394,69 @@ dsh-hooks-codex
     │
     ▼
 Harness Router
-    └─ Jev route
-        │
-        ├─ same / fallback / error ──► allow
-        │
-        └─ different candidate ─────► deny + re-plan
-                                        │
-                                        ▼
-                                  DeepSeek Harness
-                                        │
-                                        └──► next call
+    │
+    ├── same / fallback / error ──► allow
+    │
+    └── different tool ───────────► deny + re-plan
+                                      │
+                                      ▼
+                               DeepSeek Harness
+                                      │
+                                      ▼
+                                  next call
 ```
 
-DeepSeek's command-hook bridge does not expose a faithful live registry, so the integration requires a supplied tool catalog and fails open when it cannot establish a valid routing context.
+The command-hook bridge does not provide a faithful live tool registry, so DeepSeek integration requires a supplied catalog and fails open when a valid routing context is unavailable.
 
-### What Harness Router actually owns
+Install:
 
-```text
-                 HOST HARNESS
-┌───────────────────────────────────────────────────────────┐
-│ user intent · model reasoning · argument generation       │
-│ permissions · approvals · sandbox · tool execution        │
-└──────────────────────────┬────────────────────────────────┘
-                           │ hook / active-tool control
-                           ▼
-                  ┌─────────────────┐
-                  │ Harness Router  │
-                  │                 │
-                  │ cache           │
-                  │ Jev             │
-                  │ optional MCTS   │
-                  │ route decision  │
-                  └────────┬────────┘
-                           │
-                           ▼
-                    next tool choice
+```bash
+python3 hooks/deepseek/install.py
+dsh --patch .dsh/harness-router.patch.yml
 ```
 
-So the accurate claim is **decision-layer integration**, not that Harness Router universally replaces the entire host control-flow engine. Where the host exposes stronger control, the adapter uses it; where it only exposes pre-execution interception, the adapter requests a re-plan.
-
-## Why Harness Router?
-
-Because tool selection is usually a **decision problem**, not a generation problem.
-
-Harness Router gives you:
-
-- ⚡ **Fast `route` path** for ordinary tool ambiguity
-- 🌳 **Bounded `route_mcts`** for multi-step decisions
-- 🪝 **Codex, Claude Code, ohmypi, Antigravity, and DeepSeek Harness hooks** for interception before execution
-- 🧠 **TypeSafeAI Jev** through OpenRouter Decisions
-- 🔌 **Native MCP server**
-- 🧩 **Framework-agnostic Python API**
-- 🗂️ **Automatic tool discovery** for Codex sessions
-- 🏗️ **Hierarchical routing** for larger registries
-- 💾 **Bounded route cache**
-- 🛡️ **Risk metadata and execution-policy separation**
-- 🔁 **Loop detection** for long-running agents
-- 🧯 **Planner fallback** when confidence is low
-
-> Routing is not authorization. Your sandbox, approval gates, permissions, and execution policy still decide whether a tool is allowed to run.
+See [the DeepSeek integration guide](hooks/deepseek/README.md).
 
 ---
 
-## Install
+# MCP
+
+Harness Router also exposes routing as a native MCP server.
+
+Start it with:
+
+```bash
+harness-router-mcp
+```
+
+Available tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `route` | Fast next-tool routing |
+| `route_mcts` | Bounded multi-step routing |
+
+Example Codex configuration:
+
+```toml
+[mcp_servers.harness-router]
+command = "harness-router-mcp"
+```
+
+MCP is useful when the host does not need an automatic hook integration or when an agent should invoke routing explicitly.
+
+---
+
+# Installation
 
 Requires **Python 3.11+**.
 
 ```bash
-uv tool install --force --with 'mcp>=2,<3'   'git+https://github.com/Protocol-Lattice/harness-router.git@main'
+uv tool install --force --with 'mcp>=2,<3' \
+  'git+https://github.com/Protocol-Lattice/harness-router.git@main'
 ```
 
-Set your OpenRouter key:
+Set the provider key:
 
 ```bash
 export OPENROUTER_API_KEY="your-key"
@@ -375,22 +468,17 @@ Default decision model:
 typesafe/jev-1.13
 ```
 
-The default provider uses the OpenRouter Decisions API.
-
 ---
 
-## 30-second demo
+# CLI
 
-Start the MCP server:
-
-```bash
-harness-router-mcp
-```
-
-Or route directly from the CLI:
+A minimal routing request:
 
 ```bash
-har route   --goal "Fix the failing parser test"   --observation "The failure points to src/parser.py"   --tools-json '[
+har route \
+  --goal "Fix the failing parser test" \
+  --observation "Failure points to src/parser.py" \
+  --tools-json '[
     {
       "name": "read_file",
       "description": "Read a repository file",
@@ -404,15 +492,15 @@ har route   --goal "Fix the failing parser test"   --observation "The failure po
       "risk": "low"
     },
     {
-      "name": "write_file",
-      "description": "Replace a repository file",
-      "category": "mutate",
-      "risk": "medium"
+      "name": "run_tests",
+      "description": "Run tests",
+      "category": "verify",
+      "risk": "low"
     }
   ]'
 ```
 
-Example:
+Example result:
 
 ```json
 {
@@ -422,366 +510,9 @@ Example:
 }
 ```
 
-That is the core idea:
-
-**give the router a compact state + candidate tools → get the next tool.**
-
 ---
 
-## Native MCP server
-
-Harness Router exposes two MCP tools over stdio:
-
-| Tool | Use it when |
-| --- | --- |
-| `route` | The next tool is ambiguous but mostly local |
-| `route_mcts` | The first action depends on downstream consequences |
-
-Add it to Codex:
-
-```toml
-[mcp_servers.harness-router]
-command = "harness-router-mcp"
-```
-
-Then keep the routing instruction simple:
-
-> Use `route` when several tools are genuinely plausible. Use `route_mcts` only when multi-step consequences matter and a side-effect-free simulation graph is available.
-
-### Fast route payload
-
-```json
-{
-  "goal": "Fix the failing parser test",
-  "observation": "Failure points to src/parser.py",
-  "tools": [
-    {
-      "name": "read_file",
-      "description": "Read source",
-      "category": "inspect",
-      "risk": "low"
-    },
-    {
-      "name": "search_code",
-      "description": "Search repo",
-      "category": "inspect",
-      "risk": "low"
-    },
-    {
-      "name": "run_tests",
-      "description": "Run tests",
-      "category": "verify",
-      "risk": "low"
-    }
-  ]
-}
-```
-
-Response:
-
-```json
-{
-  "tool": "read_file",
-  "confidence": 0.93,
-  "fallback": false,
-  "reason": null
-}
-```
-
----
-
-## Codex
-
-This repository ships a project-local Codex hook.
-
-It integrates Harness Router into the Codex decision loop so routing can prepare the next tool decision before the model proceeds.
-
-### How it works
-
-```text
-SessionStart
-    |
-    v
-discover_tools.py
-    |
-    +--> Codex app-server
-    |      |
-    |      +--> mcpServerStatus/list
-    |
-    v
-.codex/harness-router-tools.json
-    |
-    v
-PreToolUse
-    |
-    +--> pending tool
-    +--> similar candidate tools
-    +--> compact session context
-    |
-    v
-harness-router-mcp
-    |
-    +--> same choice / fallback / error -> allow
-    |
-    +--> different confident choice -> deny once
-                                      and ask Codex to re-plan
-```
-
-The catalog is discovered **once at session startup**.
-
-For MCP tools, Harness Router can retain real metadata such as:
-
-- tool name,
-- description,
-- input schema,
-- output schema,
-- annotations,
-- source MCP server.
-
-The decision hook uses a **relevant subset** of the discovered catalog rather than blindly sending the entire registry on every call.
-
-### Install the hook in another repo
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
-  | python3 - --provider codex
-```
-
-Run from the Git repository root, or supply `--project /path/to/repo`. The same
-installer supports `--provider claude`, `--provider ohmypi`, `--provider antigravity`,
-and `--provider all`.
-`--provider both` continues to mean Codex + Claude Code. It preserves other
-hooks and settings, backs up changed files as `*.harness-router.bak`, and avoids
-duplicate registrations on repeat runs. Use `--ref TAG_OR_COMMIT` to select a
-version, or `--source /path/to/harness-router` to copy from a local checkout.
-
-The installer adds generated state and backups to `.gitignore`:
-
-```gitignore
-.codex/harness-router-tools.json
-.codex/harness-router/sessions/
-*.harness-router.bak
-```
-
-Start a **new Codex session**.
-
-The startup hook discovers tools and writes the session catalog automatically.
-
-### Optional MCTS escalation
-
-The hook starts with fast `route`.
-
-It can escalate to `route_mcts` when:
-
-- the fast route falls back or is below threshold,
-- enough plausible candidates remain,
-- a side-effect-free graph provider is configured.
-
-```bash
-export HARNESS_ROUTER_PRETOOL_MCTS_GRAPH_CMD="./scripts/build_mcts_graph.py"
-export HARNESS_ROUTER_PRETOOL_MCTS_THRESHOLD="0.80"
-```
-
-No graph provider? No fake tree.
-
-Harness Router stays on the fast path.
-
----
-
-## Claude Code
-
-The portable Claude Code integration lives in [`.claude/`](.claude/README.md):
-
-```text
-.claude/settings.json
-.claude/hooks/discover_tools.py
-.claude/hooks/pre_tool_use.py
-```
-
-It follows the same flow: build a session catalog, shortlist tools before a call,
-run `route`, and optionally escalate to `route_mcts`. A confident alternative asks
-Claude to re-plan, with at most one redirect per user turn to prevent loops.
-Errors and fallbacks preserve the original call's normal permission checks.
-
-Install `harness-router-mcp`, export `OPENROUTER_API_KEY`, and start a new Claude
-Code session. For another project, run the universal installer above with
-`--provider claude` to merge the hooks into its `.claude/settings.json`.
-
-At `SessionStart`, the hook publishes a fresh live tool registry by querying the
-Claude native server's complete `tools/list` inventory and its SDK control
-interface for configured MCP tools without a model turn. The session registry
-is available to `PreToolUse` and through `HARNESS_ROUTER_TOOL_REGISTRY` in Claude's
-Bash commands. Run `python3 .claude/hooks/discover_tools.py --list-tools` to query
-it directly as JSON. It uses no hard-coded built-in catalog, and accepts
-supplemental descriptors through
-`HARNESS_ROUTER_CLAUDE_TOOLS_FILE` or `HARNESS_ROUTER_CLAUDE_TOOLS_JSON`.
-See the [Claude hook guide](.claude/README.md) for catalog format, configuration,
-and installation details, using the [official hook format](https://code.claude.com/docs/en/hooks).
-
----
-
-## ohmypi
-
-The [ohmypi integration](.omp/README.md) runs inside the harness as a native extension:
-
-```text
-.omp/extensions/harness-router.ts
-.omp/hooks/pre_tool_use.py
-```
-
-It reads the actual runtime catalog through `pi.getAllTools()`, including names,
-descriptions, schemas, and source metadata, and filters it using
-`pi.getActiveTools()`. Discovery needs no hard-coded built-ins or separate agent
-process. The catalog is read again before each `tool_call`, so newly loaded and
-disabled tools are reflected immediately.
-
-The extension shortlists candidates, calls `route`, and optionally escalates to
-`route_mcts` using the same graph-provider contract as the other hooks. A confident
-alternative returns `{ block: true, reason }` to request one re-plan per user turn.
-Errors, fallbacks, and unknown tools pass through with normal permissions intact.
-
-Install in another project:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
-  | python3 - --provider ohmypi
-```
-
-Install `harness-router-mcp`, export `OPENROUTER_API_KEY`, and start `omp` from the
-project root. ohmypi discovers `.omp/extensions` automatically; no settings edits
-are needed. The installer requires Bun to install the pinned TypeScript dependencies
-and run the extension's type check in `.omp`. Use `--skip-ohmypi-deps` for a
-files-only installation. See the [ohmypi hook guide](.omp/README.md) for local installation,
-catalog snapshots, settings, and limitations.
-
----
-
-## Antigravity
-
-The [Antigravity integration](.antigravity/README.md) installs native hooks into
-`.agents/hooks.json` and registers `harness-router-mcp` in `.agents/mcp_config.json`.
-Both **`route`** and **`route_mcts`** are available to Antigravity.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
-  | python3 - --provider antigravity
-```
-
-Before routing, the hook reads the current conversation's live tool definitions
-from Antigravity's local runtime, including names, descriptions and schemas.
-It filters disabled MCP tools and publishes a session inventory. There is no
-hard-coded tool list; unavailable discovery causes the hook to abstain.
-
-The hook starts with `route`, optionally escalates to `route_mcts` through a
-configured simulator, and asks for one re-plan on a confident alternative.
-Antigravity retains argument generation, permissions and execution. The live
-inventory adapter uses internal runtime APIs; see the guide for compatibility,
-connection settings and explicit catalog overrides.
-
----
-
-## DeepSeek Harness hook
-
-DeepSeek Harness exposes a native `tools/pre-execute` interception point. Its
-supported `@deepseek-ai/dsh-hooks-codex` bridge can run synchronous Codex
-command hooks at that point, so Harness Router reuses the same interception
-semantics instead of inventing a private DeepSeek hook protocol.
-
-Install it in a project with:
-
-```bash
-python3 hooks/deepseek/install.py
-```
-
-Then launch DeepSeek Harness with:
-
-```bash
-dsh --patch .dsh/harness-router.patch.yml
-```
-
-The command hook reads a supplied DeepSeek tool catalog from
-`HARNESS_ROUTER_DEEPSEEK_TOOLS_JSON`, `HARNESS_ROUTER_DEEPSEEK_TOOLS_FILE`,
-or `.dsh/harness-router-tools.json`. If the catalog or router is unavailable,
-the hook fails open.
-
-See [the DeepSeek hook guide](hooks/deepseek/README.md) for configuration and
-limitations.
-
-## Skill mode
-
-The repository also ships:
-
-```text
-skills/harness-router/SKILL.md
-```
-
-Use the skill when you want the agent to call Harness Router selectively instead of intercepting every tool use.
-
-The helper is intentionally conservative:
-
-- skips obvious linear steps,
-- routes genuine ambiguity,
-- keeps argument generation in the planner,
-- stops routing after planner fallback or override.
-
-Direct helper:
-
-```bash
-python skills/harness-router/scripts/route.py   --goal "Fix the failing parser test"   --observation "The failing assertion points to src/parser.py"   --tools-json '[
-    {
-      "name": "read_file",
-      "description": "Read a source file",
-      "category": "inspect",
-      "risk": "low"
-    },
-    {
-      "name": "search_code",
-      "description": "Search repository text",
-      "category": "inspect",
-      "risk": "low"
-    }
-  ]'
-```
-
----
-
-## MCTS without token explosion
-
-`route_mcts` is for decisions where the best first tool depends on what may happen later.
-
-The important detail:
-
-**the simulations are local.**
-
-Increasing the simulation count does **not** mean making one LLM/Jev request per simulation.
-
-By default, Jev can be used as a policy prior at the first ambiguous node, while the bounded Monte Carlo search runs locally over a side-effect-free simulator.
-
-```python
-mcts = MCTSToolRouter(
-    simulator,
-    policy_router=router,
-    config=MCTSConfig(
-        simulations=64,
-        max_depth=4,
-        max_policy_evaluations=1,
-    ),
-)
-```
-
-Your simulator predicts:
-
-- available tools,
-- next state,
-- immediate reward,
-- terminal state,
-- heuristic value.
-
-It must **not** execute real writes, shell commands, browser mutations, or network side effects during search.
-
----
-
-## Python API
+# Python API
 
 ```python
 import asyncio
@@ -836,142 +567,206 @@ asyncio.run(main())
 
 ---
 
-## Routing philosophy
+# MCTS
 
-Harness Router should choose among **known alternatives**.
+Use `route_mcts` when the first tool depends on what may happen later.
 
-Good routing questions:
-
-- read vs search,
-- inspect vs mutate,
-- which browser action,
-- which MCP tool,
-- run tests vs inspect again,
-- which small fixed action advances the state.
-
-Keep these in the main planner:
-
-- generating code,
-- writing patches,
-- constructing non-trivial commands,
-- long-form argument generation,
-- open-ended planning,
-- interpreting ambiguous user intent,
-- authorization decisions.
-
-A good agent loop looks like:
+The simulations are local:
 
 ```text
-planner defines goal
-      |
-      v
-build compact state
-      |
-      v
-tool choice obvious? ---- yes ----> use it
-      |
-      no
-      |
-      v
- Harness Router
-      |
-      +--> route
-      |
-      +--> route_mcts when deeper search is justified
-      |
-      v
-planner generates arguments
-      |
-      v
-execution policy
-      |
-      v
-run tool
+router
+  │
+  ▼
+policy prior
+  │
+  ▼
+local simulator
+  │
+  ├── state
+  ├── candidate tools
+  ├── transition
+  ├── reward
+  └── terminal condition
 ```
 
----
+There is no real shell execution, file mutation, browser action, or network side effect during search.
 
-## Routing modes
-
-### Hybrid
-
-Recommended default.
+Example:
 
 ```python
-RoutingConfig(
-    mode=RoutingMode.HYBRID,
-    direct_execution_threshold=0.85,
-    fallback_threshold=0.60,
+mcts = MCTSToolRouter(
+    simulator,
+    policy_router=router,
+    config=MCTSConfig(
+        simulations=64,
+        max_depth=4,
+        max_policy_evaluations=1,
+    ),
 )
 ```
 
-| Confidence | Result |
-| --- | --- |
-| < 0.60 | planner fallback |
-| 0.60–0.85 | planner confirmation |
-| >= 0.85 | route directly, subject to execution policy |
-
-### Jev only
-
-```python
-RoutingConfig(mode=RoutingMode.JEV_ONLY)
-```
-
-Provider/router errors propagate.
-
-### Planner only
-
-```python
-RoutingConfig(mode=RoutingMode.PLANNER_ONLY)
-```
-
-No Jev provider required.
+A simulator should model possible transitions rather than execute real tools.
 
 ---
 
-## Large tool registries
+# Routing policy
 
-Large flat registries become noisy.
+Harness Router is designed for **known alternatives**.
 
-Harness Router can switch to category-first routing when that is estimated to save enough input.
+Good routing decisions:
+
+- read vs search,
+- one MCP tool vs another,
+- inspect vs mutate,
+- test vs inspect,
+- one browser action vs another,
+- which small action advances the current state.
+
+Keep these in the main planner:
+
+- code generation,
+- patch generation,
+- complex command construction,
+- long-form argument generation,
+- open-ended planning,
+- interpretation of user intent,
+- authorization.
+
+The intended division is:
 
 ```text
-                     +--> inspect --> read / search / list
-                     |
-Harness state ------>+--> mutate  --> write / patch
-                     |
-                     +--> verify  --> test / lint
-                     |
-                     +--> git     --> diff / commit
+planner
+   │
+   │ goal + compact state
+   ▼
+Harness Router
+   │
+   │ next tool
+   ▼
+planner
+   │
+   │ arguments
+   ▼
+execution policy
+   │
+   ▼
+tool
+   │
+   ▼
+result
+   │
+   └──────────────► next iteration
 ```
-
-Common inferred categories include:
-
-`inspect` · `mutate` · `execute` · `verify` · `git` · `browser` · `memory` · `network` · `finish` · `general`
-
-Repeated identical compact routes can also be served from a bounded in-process LRU cache.
 
 ---
 
-## Safety
+# Large tool registries
 
-A high-confidence route means:
+Routing becomes more useful when many tools overlap semantically.
 
-> "This is probably the best candidate tool."
+Harness Router can use hierarchical routing:
+
+```text
+                  current state
+                       │
+                       ▼
+                  category route
+                       │
+        ┌──────────────┼──────────────┐
+        ▼              ▼              ▼
+     inspect         mutate         verify
+        │              │              │
+    read/search     write/patch     test/lint
+```
+
+Common categories include:
+
+`inspect` · `mutate` · `execute` · `verify` · `git` · `browser` · `memory` · `network` · `finish`
+
+The route cache can then reuse repeated compact decisions.
+
+---
+
+# Safety and execution policy
+
+Routing and authorization are separate.
+
+A high-confidence decision means:
+
+> This is the best candidate from the supplied tool set.
 
 It does **not** mean:
 
-> "This action is authorized."
+> This action is authorized.
 
-Keep execution policy separate.
+The host harness remains responsible for:
 
-The package includes `DefaultExecutionPolicy`, but production harnesses should wrap routing with their own permissions, approval model, and sandbox rules.
+- permissions,
+- approval prompts,
+- sandboxing,
+- credentials,
+- execution,
+- user confirmation.
 
-The Codex hook never bypasses Codex sandboxing or approval prompts.
+Harness Router does not bypass those controls.
+
+Routing failures are designed to fail open where the host integration supports it: if discovery, routing, or the decision provider is unavailable, the original host behavior continues unless the specific adapter contract says otherwise.
 
 ---
 
-## Development
+# Skill mode
+
+For agents without automatic hook integration, the repository also provides:
+
+```text
+skills/harness-router/SKILL.md
+```
+
+Skill mode is explicit rather than automatic:
+
+```text
+agent
+  │
+  ▼
+decides to route
+  │
+  ▼
+Harness Router
+  │
+  ▼
+next tool
+```
+
+Use hooks when you want routing integrated into the host's tool lifecycle. Use the skill when the agent should invoke routing selectively.
+
+---
+
+# When to use it
+
+Harness Router is most useful when:
+
+- several tools perform similar operations,
+- the registry is large,
+- wrong-tool selection causes retries,
+- tool calls are expensive,
+- the harness exposes a native hook,
+- a small decision layer can be cheaper than repeatedly asking the main model to choose.
+
+If an agent has only a few obvious tools, routing may add unnecessary overhead.
+
+Benchmark the **whole agent loop**, not just router latency:
+
+- task success,
+- tool-selection accuracy,
+- wrong-tool rate,
+- retries,
+- latency,
+- token usage,
+- provider cost.
+
+---
+
+# Development
 
 ```bash
 git clone https://github.com/Protocol-Lattice/harness-router.git
@@ -979,7 +774,7 @@ cd harness-router
 python -m pip install -e ".[dev]"
 ```
 
-Run the checks:
+Run checks:
 
 ```bash
 pytest
@@ -989,28 +784,20 @@ mypy
 
 ---
 
-## Project status
+# Project status
 
 Harness Router is **alpha**.
 
-The API will evolve as it is tested against real coding agents, MCP hosts, browser agents, computer-use systems, and larger tool registries.
+The project is focused on the decision layer between an agent's current state and its next tool call. Host adapters may evolve as their hook and extension APIs change.
 
-If you benchmark it, benchmark the **whole agent loop** — latency, cost, tool accuracy, retries, and task success — not routing in isolation.
+The architecture intentionally avoids claiming that one adapter can replace an entire agent harness. The router owns routing; the host owns the rest of the agent lifecycle.
 
 ---
 
-## Built for tool-heavy agents
-
-If your agent has three tools, you may not need Harness Router.
-
-If it has thirty, three hundred, or several tools that all look almost identical to a language model, routing starts to become infrastructure.
-
-**That is the layer Harness Router is trying to own.**
-
 <p align="center">
-  <strong>One router. Two ways in.</strong>
+  <strong>One router. Multiple harnesses.</strong>
   <br>
-  Skill or hook.
+  Cache → Jev → MCTS
 </p>
 
 <p align="center">
