@@ -16,7 +16,9 @@ def main():
     tools=data.get("tools",[]) if isinstance(data,dict) else data
     if not isinstance(tools,list) or len(tools)<2: return 0
     req={"harness":"claude","hook":"UserPromptSubmit","cwd":str(ROOT),
-         "session_id":str(p.get("session_id") or "default"),"goal":goal[:1600],"tools":tools}
+         "session_id":str(p.get("session_id") or "default"),"decision_id":str(p.get("decision_id") or p.get("turn_id") or ""),
+         "goal":goal[:1600],"observation":str(p.get("observation") or p.get("tool_result") or ""),
+         "last_action":p.get("last_action"),"tools":tools}
     proc=subprocess.run([sys.executable,str(ROOT/"hooks"/"pre_decision.py")],
                         input=json.dumps(req),text=True,capture_output=True,
                         timeout=float(os.environ.get("HARNESS_ROUTER_PREDECISION_TIMEOUT","4")))
