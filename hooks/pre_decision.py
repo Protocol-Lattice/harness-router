@@ -233,10 +233,12 @@ def main() -> int:
     cache = _cache_path(repo, session)
     started = time.monotonic()
 
-    cached = _cache_get(cache, state_key)
+    bypass_cache = os.environ.get("HARNESS_ROUTER_PREDECISION_BYPASS_CACHE") == "1"
+    cached = None if bypass_cache else _cache_get(cache, state_key)
     if cached:
         result = dict(cached)
         result["cache_hit"] = True
+        result["provider_requests"] = 0
         result["duration_ms"] = round((time.monotonic() - started) * 1000, 3)
     else:
         deadline = started + float(
