@@ -21,7 +21,7 @@ from urllib.request import Request, urlopen
 
 REPOSITORY = "Protocol-Lattice/harness-router"
 BACKUP_SUFFIX = ".harness-router.bak"
-COMMON_ASSETS = ("hooks/pre_decision.py", "hooks/post_tool_use.py")
+COMMON_ASSETS = ("hooks/pre_decision.py", "hooks/post_tool_use.py", "hooks/stop.py")
 PROVIDERS = {
     "codex": ("Codex", ".codex/hooks.json"),
     "claude": ("Claude Code", ".claude/settings.json"),
@@ -57,6 +57,17 @@ DEEPSEEK_HOOK_CONFIG = {
             }
         ],
         "PostToolUse": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3 .dsh/hooks/hook.py",
+                        "timeout": 5,
+                    }
+                ]
+            }
+        ],
+        "Stop": [
             {
                 "hooks": [
                     {
@@ -323,6 +334,9 @@ def install(project: Path, providers: list[str], source: Path | None, ref: str) 
             check_target(root, config_target)
             check_target(root, patch_target)
             planned[hook_target] = hook_source
+            stop_source = asset("hooks/deepseek/stop.py", source, ref)
+            ast.parse(stop_source, filename="hooks/deepseek/stop.py", feature_version=(3, 11))
+            planned[root / ".dsh/hooks/stop.py"] = stop_source
             existing = (
                 object_from_json(config_target.read_bytes(), str(config_target))
                 if config_target.exists()
