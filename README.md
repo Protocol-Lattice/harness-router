@@ -83,40 +83,254 @@ The routing path is deliberately layered:
 
 The cache avoids repeating identical decisions. Jev handles ordinary ambiguity. MCTS is available when the choice depends on downstream consequences and a side-effect-free simulator is available.
 
-## Decision-loop integration
+## Hook architecture
 
-The primary hook model is a **decision-loop adapter**, not merely a PreToolUse wrapper.
+Harness Router integrates at the **host's actual hook/interception point**. The integration is intentionally host-specific: a hook can only control what that harness exposes.
+
+The important distinction is:
+
+- **ohmypi** can temporarily restrict the active tool set before the next provider request, so routing participates directly in the next-tool decision.
+- **Codex, Claude Code, Antigravity, and DeepSeek Harness** expose pre-execution interception. Harness Router evaluates the pending call and can block a confident alternative, causing the host to re-plan.
+- The router never generates tool arguments, grants permissions, or executes tools.
+
+### Common control flow
 
 ```text
-pre_decision
+user / task
+    │
+    ▼
+host harness / model
+    │
+    │  native hook / interception point
+    ▼
+Harness Router
     │
     ├── cache hit ───────────────┐
     ├── Jev route ───────────────┤
     └── optional MCTS ──────────┤
                                 ▼
-                         next decision
+                         routing decision
                                 │
+                 ┌──────────────┴──────────────┐
+                 │                             │
+             same / fallback              different
+                 │                             │
+                 ▼                             ▼
+          normal execution              block / redirect
+                 │                             │
+                 ▼                             ▼
+              tool result                 host re-plans
+                 │                             │
+                 └──────────────┬──────────────┘
                                 ▼
-                         model / harness
-                                │
-                                ▼
-                          tool execution
-                                │
-                                ▼
-                          post_tool_use
-                                │
-                                └────► updated state
-                                         │
-                                         └── next decision
+                         next host iteration
 ```
 
-pre_decision prepares the next tool-selection decision. post_tool_use feeds the observed result back into the routing state.
+This is **not one universal replacement loop**. Each harness decides what happens after the hook returns.
 
-The exact enforcement mechanism is host-specific. Where a harness exposes active-tool control, the adapter can constrain the active set. Where it only exposes context injection or a pre-tool checkpoint, the adapter uses that mechanism instead.
+### Codex — `PreToolUse`
 
-Harness Router owns the **tool-selection policy**, while the host still owns model inference, argument generation, permissions, approvals, sandboxing, and tool execution.
+```text
+Codex model
+    │
+    ▼
+proposes tool call
+    │
+    ▼
+PreToolUse hook
+    │
+    ▼
+Harness Router
+    ├─ cache
+    ├─ Jev route
+    └─ optional MCTS
+    │
+    ├─ same / fallback / error ──► allow original call
+    │
+    └─ confident different tool ─► deny once
+                                      │
+                                      ▼
+                               Codex re-plans
+                                      │
+                                      └──► next tool call
+                                              │
+                                              ▼
+                                           execute
+                                              │
+                                              ▼
+                                         tool result
+                                              │
+                                              └──► Codex model
+```
 
-Routing failures are fail-open and never bypass the host's normal execution policy.
+`SessionStart` is used separately to build the tool catalog. It is discovery, not a second decision loop.
+
+### Claude Code — `PreToolUse`
+
+```text
+Claude Code model
+    │
+    ▼
+proposes tool call
+    │
+    ▼
+PreToolUse
+    │
+    ▼
+Harness Router
+    ├─ cache
+    ├─ Jev route
+    └─ optional MCTS
+    │
+    ├─ same / fallback / error ──► normal permission flow
+    │
+    └─ confident different tool ─► deny + re-plan
+                                      │
+                                      ▼
+                                  Claude model
+                                      │
+                                      ▼
+                                   tool call
+                                      │
+                                      ▼
+                                   execution
+                                      │
+                                      └──► next model turn
+```
+
+`SessionStart` publishes the live catalog used by `PreToolUse`. The router does not execute the selected tool or alter its arguments.
+
+### ohmypi — active-tool control + `tool_call` guard
+
+ohmypi is the integration with the strongest control point because its extension API can change the active tool surface **before the next provider request**.
+
+```text
+user prompt / agent turn
+        │
+        ▼
+before_agent_start
+        │
+        ▼
+Harness Router
+   ├─ cache
+   ├─ Jev route
+   └─ optional MCTS
+        │
+        ▼
+setActiveTools([selected])
+        │
+        ▼
+next provider request
+        │
+        ▼
+model sees selected active tool
+        │
+        ▼
+tool_call
+        │
+        ├─ expected selected tool ─► execute
+        │                              │
+        │                              ▼
+        │                          tool_result
+        │                              │
+        │                              ▼
+        │                    Router evaluates next state
+        │                              │
+        │                              └──► next provider request
+        │
+        └─ unexpected tool ─────────► defensive block
+```
+
+The original active-tool set is restored on fallback, timeout, low confidence, malformed output, or router failure. `tool_call` remains a defensive guard; the primary control point is `before_agent_start` + `setActiveTools()`.
+
+### Antigravity — `PreToolUse`
+
+```text
+Antigravity model
+    │
+    ▼
+proposes tool call
+    │
+    ▼
+PreToolUse hook
+    │
+    ▼
+live conversation tool inventory
+    │
+    ▼
+Harness Router
+    ├─ cache
+    ├─ Jev route
+    └─ optional MCTS
+    │
+    ├─ same / fallback / error ──► normal execution path
+    │
+    └─ confident different tool ─► deny + re-plan
+                                      │
+                                      ▼
+                               Antigravity model
+                                      │
+                                      └──► next call
+```
+
+`Stop` is used as a redirect guard reset point. `PreToolUse` is the actual routing interception point; the hook does not execute or rewrite tool arguments.
+
+### DeepSeek Harness — `tools/pre-execute`
+
+DeepSeek Harness reaches Harness Router through its supported Codex hook bridge:
+
+```text
+DeepSeek Harness model
+    │
+    ▼
+proposes tool call
+    │
+    ▼
+tools/pre-execute
+    │
+    ▼
+dsh-hooks-codex
+    │
+    ▼
+Harness Router
+    └─ Jev route
+        │
+        ├─ same / fallback / error ──► allow
+        │
+        └─ different candidate ─────► deny + re-plan
+                                        │
+                                        ▼
+                                  DeepSeek Harness
+                                        │
+                                        └──► next call
+```
+
+DeepSeek's command-hook bridge does not expose a faithful live registry, so the integration requires a supplied tool catalog and fails open when it cannot establish a valid routing context.
+
+### What Harness Router actually owns
+
+```text
+                 HOST HARNESS
+┌───────────────────────────────────────────────────────────┐
+│ user intent · model reasoning · argument generation       │
+│ permissions · approvals · sandbox · tool execution        │
+└──────────────────────────┬────────────────────────────────┘
+                           │ hook / active-tool control
+                           ▼
+                  ┌─────────────────┐
+                  │ Harness Router  │
+                  │                 │
+                  │ cache           │
+                  │ Jev             │
+                  │ optional MCTS   │
+                  │ route decision  │
+                  └────────┬────────┘
+                           │
+                           ▼
+                    next tool choice
+```
+
+So the accurate claim is **decision-layer integration**, not that Harness Router universally replaces the entire host control-flow engine. Where the host exposes stronger control, the adapter uses it; where it only exposes pre-execution interception, the adapter requests a re-plan.
 
 ## Why Harness Router?
 
