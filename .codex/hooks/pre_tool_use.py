@@ -156,10 +156,20 @@ def _infer_current_tool(tool_name: str) -> dict[str, Any]:
 
 
 def _load_predecision(root: Path, session_id: str) -> dict[str, Any] | None:
-    path = root / ".codex" / "harness-router" / "sessions" / f"{session_id}.decision.json"
-    try:
-        decision = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    # PostToolUse precomputation uses the shared state store. Keep the legacy
+    # Codex path as a fallback for older sessions/installations.
+    paths = (
+        root / ".harness-router" / "sessions" / f"{session_id}.decision.json",
+        root / ".codex" / "harness-router" / "sessions" / f"{session_id}.decision.json",
+    )
+    decision = None
+    for path in paths:
+        try:
+            decision = json.loads(path.read_text(encoding="utf-8"))
+            break
+        except (OSError, json.JSONDecodeError):
+            continue
+    if not isinstance(decision, dict):
         return None
     if not isinstance(decision, dict):
         return None
