@@ -124,7 +124,7 @@ def route(
         "fallback_threshold": 0.60,
         "hierarchical_threshold": 24,
         "route_cache_size": 256,
-        "obvious_cache_size": 512,
+        "obvious_cache_size": 0,
         "obvious_cache_ttl_seconds": 300,
     }
     wire = (json.dumps(req, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
