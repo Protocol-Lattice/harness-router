@@ -1,2159 +1,441 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>harness-router — the fast decision layer for agent harnesses</title>
-  <meta name="description" content="Live tool discovery and routing hooks for Codex, Claude Code, ohmypi, Antigravity, and DeepSeek Harness. Use route for fast selection and route_mcts for bounded search." />
-  <meta name="theme-color" content="#0a0910" />
-  <link rel="canonical" href="https://protocol-lattice.github.io/harness-router/" />
-
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://protocol-lattice.github.io/harness-router/" />
-  <meta property="og:title" content="harness-router — route tool calls before they run" />
-  <meta property="og:description" content="Route live tools before they run in Codex, Claude Code, ohmypi, Antigravity, and DeepSeek Harness. Use route for fast decisions or route_mcts with a side-effect-free state graph." />
-  <meta name="twitter:card" content="summary_large_image" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>harness-router — the decision loop for agent harnesses</title>
+  <meta name="description" content="A decision layer for agent harnesses: pre-decision routing, tool execution, post-tool observation, and state-aware next-step selection.">
+  <meta name="theme-color" content="#09080e">
+  <link rel="canonical" href="https://protocol-lattice.github.io/harness-router/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://protocol-lattice.github.io/harness-router/">
+  <meta property="og:title" content="harness-router — the decision loop for agent harnesses">
+  <meta property="og:description" content="Decide. Execute. Observe. Decide again. Harness Router connects pre-decision routing with post-tool feedback.">
+  <meta name="twitter:card" content="summary_large_image">
 
   <style>
     :root {
-      --bg: #09080e;
-      --panel: rgba(255,255,255,.025);
-      --panel-strong: #100e16;
-      --line: rgba(255,255,255,.105);
-      --line-soft: rgba(255,255,255,.06);
-      --text: #f5f1ed;
-      --muted: #9e98a6;
-      --pink: #ff42be;
-      --pink-soft: rgba(255,66,190,.12);
-      --max: 1180px;
-      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      --serif: Iowan Old Style, Baskerville, "Times New Roman", Times, serif;
-      color-scheme: dark;
-      font-synthesis: none;
+      --bg:#09080e;
+      --panel:rgba(255,255,255,.028);
+      --panel-strong:#100e16;
+      --line:rgba(255,255,255,.105);
+      --line-soft:rgba(255,255,255,.06);
+      --text:#f5f1ed;
+      --muted:#9e98a6;
+      --pink:#ff42be;
+      --pink-soft:rgba(255,66,190,.11);
+      --max:1180px;
+      --sans:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+      --serif:Iowan Old Style,Baskerville,"Times New Roman",Times,serif;
+      color-scheme:dark;
+      font-synthesis:none;
     }
-
-    * { box-sizing: border-box; }
-    html {
-      scroll-behavior: smooth;
-      -webkit-text-size-adjust: 100%;
-      text-size-adjust: 100%;
-    }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      color: var(--text);
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+    body{
+      margin:0;min-height:100vh;color:var(--text);overflow-x:hidden;
       background:
-        linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,.028) 1px, transparent 1px),
-        radial-gradient(circle at 74% 16%, rgba(255,66,190,.10), transparent 28rem),
-        radial-gradient(circle at 18% 60%, rgba(140,99,255,.075), transparent 26rem),
+        linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px),
+        radial-gradient(circle at 72% 12%,rgba(255,66,190,.11),transparent 28rem),
+        radial-gradient(circle at 15% 60%,rgba(140,99,255,.07),transparent 25rem),
         var(--bg);
-      background-size: 46px 46px, 46px 46px, auto, auto, auto;
-      font-family: var(--sans);
-      overflow-x: hidden;
-    }
-
-    img, svg, video { max-width: 100%; height: auto; }
-    a { color: inherit; text-decoration: none; }
-    button { font: inherit; }
-    code { font-family: var(--mono); }
-
-    .shell {
-      width: min(calc(100% - 40px), var(--max));
-      margin: 0 auto;
-    }
-
-    .nav {
-      min-height: 76px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-      border-bottom: 1px solid var(--line-soft);
-    }
-
-    .brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 11px;
-      font: 650 12px/1 var(--mono);
-      letter-spacing: .18em;
-      text-transform: uppercase;
-    }
-
-    .brand-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: var(--pink);
-      box-shadow: 0 0 20px rgba(255,66,190,.85);
-    }
-
-    .nav-links {
-      display: flex;
-      align-items: center;
-      gap: 22px;
-      color: var(--muted);
-      font: 12px/1 var(--mono);
-      text-transform: uppercase;
-      letter-spacing: .08em;
-    }
-
-    .nav-links a:hover { color: var(--text); }
-
-    .hero {
-      min-height: 760px;
-      padding: 84px 0 78px;
-      display: grid;
-      grid-template-columns: 1fr 280px;
-      gap: 70px;
-      align-items: end;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .section-id {
-      display: flex;
-      align-items: center;
-      gap: 15px;
-      color: var(--pink);
-      font: 11px/1 var(--mono);
-      letter-spacing: .16em;
-      text-transform: uppercase;
-    }
-
-    .section-id::after {
-      content: "";
-      width: 64px;
-      height: 1px;
-      background: currentColor;
-      opacity: .55;
-    }
-
-    h1 {
-      margin: 34px 0 26px;
-      max-width: 900px;
-      font: 500 clamp(64px, 9vw, 126px)/.86 var(--serif);
-      letter-spacing: -.062em;
-    }
-
-    h1 em {
-      color: var(--pink);
-      font-weight: 400;
-    }
-
-    .hero-copy {
-      max-width: 690px;
-      margin: 0;
-      color: #bbb5bf;
-      font-size: clamp(17px, 2vw, 21px);
-      line-height: 1.58;
-    }
-
-    .hero-copy strong { color: var(--text); font-weight: 620; }
-
-    .install {
-      margin-top: 38px;
-      max-width: 760px;
-    }
-
-    .install-tabs {
-      display: flex;
-      gap: 18px;
-      margin-bottom: 10px;
-      color: #706a74;
-      font: 10px/1 var(--mono);
-      text-transform: uppercase;
-      letter-spacing: .16em;
-    }
-
-    .install-tabs span:first-child { color: var(--pink); }
-
-    .command {
-      width: 100%;
-      min-height: 58px;
-      display: flex;
-      align-items: center;
-      gap: 13px;
-      border: 1px solid var(--line);
-      border-radius: 9px;
-      padding: 0 15px 0 18px;
-      background: rgba(11,9,15,.82);
-      box-shadow: inset 0 1px rgba(255,255,255,.025);
-    }
-
-    .prompt {
-      flex: 0 0 auto;
-      color: var(--pink);
-      font: 700 13px/1 var(--mono);
-    }
-
-    .command code {
-      min-width: 0;
-      flex: 1;
-      overflow-x: auto;
-      white-space: nowrap;
-      scrollbar-width: none;
-      color: #ddd7df;
-      font-size: 12px;
-    }
-
-    .command code::-webkit-scrollbar { display: none; }
-
-    .copy {
-      flex: 0 0 auto;
-      border: 0;
-      border-left: 1px solid var(--line);
-      background: transparent;
-      color: var(--muted);
-      padding: 9px 4px 9px 14px;
-      cursor: pointer;
-      font: 10px/1 var(--mono);
-      letter-spacing: .08em;
-      text-transform: uppercase;
-    }
-
-    .copy:hover { color: var(--text); }
-
-    .hero-aside {
-      align-self: center;
-      padding-left: 24px;
-      border-left: 1px solid var(--line);
-    }
-
-    .hero-aside .eyebrow {
-      color: #77717c;
-      font: 10px/1.4 var(--mono);
-      text-transform: uppercase;
-      letter-spacing: .14em;
-    }
-
-    .route-word {
-      margin: 20px 0 8px;
-      font: 600 30px/1 var(--mono);
-      letter-spacing: -.055em;
-    }
-
-    .confidence {
-      color: var(--pink);
-      font: 11px/1.4 var(--mono);
-    }
-
-    .micro-flow {
-      margin-top: 28px;
-      display: grid;
-      gap: 9px;
-    }
-
-    .micro-flow div {
-      display: flex;
-      justify-content: space-between;
-      gap: 20px;
-      padding: 10px 0;
-      border-top: 1px solid var(--line-soft);
-      color: var(--muted);
-      font: 11px/1.2 var(--mono);
-    }
-
-    .micro-flow strong {
-      color: var(--text);
-      font-weight: 500;
-    }
-
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      border-bottom: 1px solid var(--line);
-    }
-
-    .stat {
-      min-height: 124px;
-      padding: 27px 25px;
-      border-right: 1px solid var(--line);
-    }
-
-    .stat:last-child { border-right: 0; }
-
-    .stat strong {
-      display: block;
-      margin-bottom: 17px;
-      font: 500 29px/1 var(--serif);
-    }
-
-    .stat span {
-      color: var(--muted);
-      font: 10px/1.4 var(--mono);
-      letter-spacing: .12em;
-      text-transform: uppercase;
-    }
-
-    .story {
-      min-height: 610px;
-      display: grid;
-      grid-template-columns: 110px minmax(0, 1fr) minmax(330px, .78fr);
-      gap: 38px;
-      padding: 104px 0;
-      border-bottom: 1px solid var(--line);
-      align-items: start;
-    }
-
-    .story-no {
-      color: var(--pink);
-      font: 11px/1 var(--mono);
-      letter-spacing: .14em;
-    }
-
-    .story h2 {
-      margin: -13px 0 22px;
-      max-width: 700px;
-      font: 500 clamp(48px, 6.5vw, 82px)/.93 var(--serif);
-      letter-spacing: -.052em;
-    }
-
-    .story h2 em {
-      color: var(--pink);
-      font-weight: 400;
-    }
-
-    .story-copy {
-      max-width: 610px;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.72;
-    }
-
-    .story-copy strong { color: #dcd6de; font-weight: 600; }
-
-    .terminal {
-      border: 1px solid var(--line);
-      border-radius: 11px;
-      overflow: hidden;
-      background: rgba(7,7,11,.83);
-      box-shadow: 0 25px 75px rgba(0,0,0,.24);
-    }
-
-    .terminal-top {
-      height: 42px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 14px;
-      border-bottom: 1px solid var(--line-soft);
-      color: #6d6871;
-      font: 10px/1 var(--mono);
-      text-transform: uppercase;
-      letter-spacing: .1em;
-    }
-
-    .terminal-dots {
-      display: flex;
-      gap: 5px;
-    }
-
-    .terminal-dots i {
-      width: 6px;
-      height: 6px;
-      display: block;
-      border-radius: 50%;
-      background: #39343d;
-    }
-
-    pre {
-      margin: 0;
-      overflow-x: auto;
-      padding: 22px;
-      color: #cbc5ce;
-      font: 11.5px/1.75 var(--mono);
-      white-space: pre;
-    }
-
-    .pink { color: var(--pink); }
-    .dim { color: #67616b; }
-
-    .decision-stack {
-      display: grid;
-      gap: 10px;
-    }
-
-    .decision-card {
-      padding: 19px 20px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--panel);
-    }
-
-    .decision-card.active {
-      border-color: rgba(255,66,190,.35);
-      background: var(--pink-soft);
-    }
-
-    .decision-card b {
-      display: flex;
-      justify-content: space-between;
-      gap: 18px;
-      color: #ded8e0;
-      font: 500 12px/1.4 var(--mono);
-    }
-
-    .decision-card p {
-      margin: 9px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.55;
-    }
-
-    .decision-card.active b span:last-child { color: var(--pink); }
-
-    .jev-intro { min-width: 0; }
-
-    .jev-compare {
-      margin: 24px 0 24px;
-      max-width: 430px;
-    }
-
-    .jev-stat {
-      min-width: 0;
-      padding: 0;
-      border: 0;
-    }
-
-    .jev-saving {
-      display: block;
-      margin: 0 0 10px;
-      color: var(--pink);
-      font: 500 clamp(72px, 8vw, 104px)/.9 var(--serif);
-      letter-spacing: -.065em;
-    }
-
-    .jev-saving-label {
-      margin: 0;
-      max-width: 390px;
-      color: #d8d2da;
-      font: 500 16px/1.45 var(--sans);
-    }
-
-    .jev-saving-label span {
-      display: block;
-      margin-top: 8px;
-      color: var(--muted);
-      font: 10px/1.55 var(--mono);
-      text-transform: uppercase;
-      letter-spacing: .12em;
-    }
-
-    .jev-intro .story-copy {
-      max-width: 640px;
-    }
-
-    .jev-links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px 24px;
-      margin-top: 25px;
-      font: 11px/1.6 var(--mono);
-    }
-
-    .jev-links a,
-    .jev-source a {
-      text-decoration: underline;
-      text-underline-offset: 4px;
-      text-decoration-color: rgba(255,66,190,.45);
-    }
-
-    .jev-links a:hover,
-    .jev-source a:hover { color: var(--pink); }
-
-    .jev-links a:focus-visible,
-    .jev-source a:focus-visible,
-    .nav-links a:focus-visible {
-      outline: 2px solid var(--pink);
-      outline-offset: 5px;
-    }
-
-    .jev-benchmark {
-      min-width: 0;
-      margin: 0;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: var(--panel-strong);
-      overflow: hidden;
-    }
-
-    .jev-benchmark figcaption {
-      padding: 24px;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .jev-benchmark h3 {
-      margin: 0 0 6px;
-      font: 500 14px/1.5 var(--mono);
-    }
-
-    .jev-chart-unit,
-    .jev-source {
-      margin: 0;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.65;
-    }
-
-    .jev-cost-row { padding: 24px; }
-    .jev-cost-row + .jev-cost-row { border-top: 1px solid var(--line-soft); }
-    .jev-cost-row.highlight { background: rgba(255,66,190,.045); }
-
-    .jev-model {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 8px;
-      font: 500 12px/1.5 var(--mono);
-    }
-
-    .jev-model span { color: var(--muted); font-size: 10px; }
-    .jev-cost-row.highlight .jev-model strong { color: var(--pink); }
-
-    .jev-cost {
-      margin: 16px 0;
-      font: 500 32px/1.15 var(--mono);
-      letter-spacing: -.055em;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .jev-cost-track {
-      height: 7px;
-      overflow: hidden;
-      border-radius: 2px;
-      background: rgba(255,255,255,.06);
-    }
-
-    .jev-cost-fill {
-      display: block;
-      height: 100%;
-      width: 100%;
-      background: #797180;
-    }
-
-    /* Linear input-token price scale: $0.042 / $10 per 1M tokens. */
-    .jev-cost-row.highlight .jev-cost-fill {
-      width: calc(100% * .042 / 10);
-      background: var(--pink);
-    }
-
-    .jev-reduction {
-      margin: 0;
-      padding: 18px 24px;
-      border-top: 1px solid var(--line);
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    .jev-reduction strong { color: var(--pink); }
-
-    .jev-source { padding: 20px 24px; border-top: 1px solid var(--line); }
-    .jev-source a { color: var(--text); }
-
-    .benchmark-intro { grid-column: 2 / -1; }
-    .benchmark-intro .story-copy { max-width: 720px; margin-bottom: 0; }
-
-    .benchmark-panel {
-      grid-column: 2 / -1;
-      min-width: 0;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      overflow: hidden;
-      background: var(--panel-strong);
-    }
-
-    .benchmark-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 22px;
-      color: var(--pink);
-      font: 10px/1.5 var(--mono);
-      letter-spacing: .08em;
-      text-transform: uppercase;
-    }
-
-    .benchmark-badge::before {
-      content: "";
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-
-    .bench-chart { margin: 0; }
-
-    .bench-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 24px 28px;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .bench-toolbar h3 { margin: 0; font: 500 14px/1.5 var(--mono); }
-
-    .bench-chart-unit {
-      margin: 4px 0 0;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    .bench-controls {
-      display: flex;
-      gap: 3px;
-      padding: 4px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(0,0,0,.18);
-    }
-
-    .bench-controls button {
-      padding: 8px 13px;
-      border: 0;
-      border-radius: 5px;
-      background: transparent;
-      color: var(--muted);
-      font: 11px/1.3 var(--mono);
-      cursor: pointer;
-      transition: color .15s ease, background .15s ease;
-    }
-
-    .bench-controls button:hover { color: var(--text); }
-
-    .bench-controls button[aria-pressed="true"] {
-      background: rgba(255,255,255,.09);
-      color: var(--text);
-    }
-
-    .bench-controls button:focus-visible,
-    .bench-details summary:focus-visible {
-      outline: 2px solid var(--pink);
-      outline-offset: 3px;
-    }
-
-    .bench-view[hidden] { display: none; }
-
-    .bench-experiment {
-      display: grid;
-      grid-template-columns: 190px minmax(0, 1fr);
-      gap: 28px;
-      padding: 28px;
-    }
-
-    .bench-experiment + .bench-experiment { border-top: 1px solid var(--line-soft); }
-
-    .bench-experiment h4 {
-      margin: 0;
-      font: 500 14px/1.5 var(--mono);
-    }
-
-    .bench-experiment-kind {
-      margin: 4px 0 18px;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    .bench-speed {
-      display: block;
-      color: var(--pink);
-      font: 500 34px/1 var(--sans);
-      letter-spacing: -.05em;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .bench-speed-label {
-      display: block;
-      margin-top: 6px;
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.5;
-    }
-
-    .bench-bar + .bench-bar { margin-top: 16px; }
-
-    .bench-bar-label {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 8px;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
-    .bench-bar-label strong {
-      flex-shrink: 0;
-      color: var(--text);
-      font: 500 12px/1.5 var(--mono);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .bench-track {
-      height: 9px;
-      overflow: hidden;
-      border-radius: 2px;
-      background: rgba(255,255,255,.035);
-    }
-
-    .bench-fill {
-      width: calc(var(--latency) / 10000 * 100%);
-      height: 100%;
-      background: #a39caa;
-    }
-
-    .bench-bar.router .bench-fill { background: var(--pink); }
-    .bench-bar.router .bench-bar-label strong { color: var(--pink); }
-
-    .bench-quality {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 3px 10px;
-      margin: 16px 0 0;
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.6;
-    }
-
-    .bench-quality strong { color: var(--text); font-weight: 500; }
-
-    .bench-context {
-      margin: 0;
-      padding: 16px 28px;
-      border-top: 1px solid var(--line-soft);
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.7;
-    }
-
-    .bench-details { border-top: 1px solid var(--line); }
-
-    .bench-details summary {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 18px 28px;
-      color: var(--text);
-      font: 11px/1.5 var(--mono);
-      cursor: pointer;
-      list-style: none;
-    }
-
-    .bench-details summary::-webkit-details-marker { display: none; }
-    .bench-details summary::after { content: "+"; color: var(--muted); font-size: 17px; }
-    .bench-details[open] summary::after { content: "−"; }
-
-    .bench-methodology {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 24px 32px;
-      padding: 0 28px 26px;
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.7;
-    }
-
-    .bench-methodology h4 {
-      margin: 0 0 8px;
-      color: var(--text);
-      font: 500 12px/1.5 var(--mono);
-    }
-
-    .bench-methodology p { margin: 0; }
-
-    .bench-links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px 20px;
-      margin-top: 12px;
-      font: 11px/1.5 var(--mono);
-    }
-
-    .bench-links a { text-decoration: underline; text-underline-offset: 4px; }
-    .bench-links a:hover { color: var(--pink); }
-
-    .mcts-tree {
-      min-height: 365px;
-      position: relative;
-      display: grid;
-      place-items: center;
-      border: 1px solid var(--line);
-      border-radius: 11px;
-      background:
-        radial-gradient(circle at 50% 46%, rgba(255,66,190,.10), transparent 35%),
-        rgba(7,7,11,.82);
-      overflow: hidden;
-    }
-
-    .tree {
-      width: min(92%, 470px);
-      display: grid;
-      gap: 28px;
-      font: 10px/1.3 var(--mono);
-    }
-
-    .tree-row {
-      display: flex;
-      justify-content: center;
-      gap: 12px;
-    }
-
-    .node {
-      min-width: 91px;
-      padding: 11px 10px;
-      text-align: center;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #0b0a10;
-      color: var(--muted);
-    }
-
-    .node.best {
-      color: var(--pink);
-      border-color: rgba(255,66,190,.4);
-      background: var(--pink-soft);
-    }
-
-    .mcts-badge {
-      position: absolute;
-      right: 13px;
-      bottom: 13px;
-      color: #706a74;
-      font: 9px/1 var(--mono);
-      text-transform: uppercase;
-      letter-spacing: .11em;
-    }
-
-    .install-section {
-      padding: 110px 0 125px;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .install-head {
-      display: grid;
-      grid-template-columns: 1fr .65fr;
-      gap: 70px;
-      align-items: end;
-      margin-bottom: 44px;
-    }
-
-    .install-head h2 {
-      margin: 14px 0 0;
-      max-width: 800px;
-      font: 500 clamp(52px, 7vw, 88px)/.92 var(--serif);
-      letter-spacing: -.055em;
-    }
-
-    .install-head p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 15px;
-      line-height: 1.7;
-    }
-
-    .install-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      border: 1px solid var(--line);
-      border-radius: 11px;
-      overflow: hidden;
-      background: rgba(7,7,11,.76);
-    }
-
-    #codex-hook .install-grid {
-      grid-template-columns: minmax(0, 1.65fr) minmax(320px, .85fr);
-    }
-
-    #codex-hook .install-step {
-      min-width: 0;
-      min-height: 280px;
-    }
-
-    #codex-hook .install-step h3 {
-      font-size: 26px;
-      line-height: 1.08;
-    }
-
-    #codex-hook .install-step p {
-      min-height: 0;
-    }
-
-    #codex-hook .mini-code {
-      max-width: 100%;
-      font-size: 10px;
-      line-height: 1.7;
-    }
-
-    .hook-provider {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin: 0 0 20px;
-      padding: 0;
-      border: 0;
-    }
-
-    .hook-provider legend {
-      margin-bottom: 10px;
-      color: var(--muted);
-      font: 10px/1.5 var(--mono);
-      text-transform: uppercase;
-      letter-spacing: .08em;
-    }
-
-    .hook-provider label { position: relative; cursor: pointer; }
-    .hook-provider input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-    .hook-provider span {
-      display: flex;
-      align-items: center;
-      min-height: 44px;
-      padding: 10px 17px;
-      border: 1px solid var(--line);
-      border-radius: 7px;
-      color: var(--muted);
-      font: 12px/1.4 var(--mono);
-    }
-    .hook-provider input:checked + span {
-      border-color: var(--pink);
-      color: var(--pink);
-      background: var(--pink-soft);
-    }
-    .hook-provider input:focus-visible + span { outline: 2px solid var(--pink); outline-offset: 3px; }
-    .hook-command-toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 8px;
-      color: var(--muted);
-      font: 10px/1.5 var(--mono);
-    }
-    #codex-hook .hook-install-note { margin: 14px 0 0; font-size: 12px; }
-
-    .hook-behavior {
-      margin-top: 22px;
-      display: grid;
-      grid-template-columns: 220px minmax(0, 1fr);
-      gap: 28px;
-      align-items: start;
-      padding: 24px;
-      border: 1px solid var(--line);
-      border-radius: 11px;
-      background: rgba(7,7,11,.58);
-    }
-
-    .hook-behavior h3 {
-      margin: 10px 0 0;
-      font: 500 28px/1.05 var(--serif);
-      letter-spacing: -.035em;
-    }
-
-    .hook-behavior p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.7;
-    }
-
-    .install-step {
-      min-height: 310px;
-      padding: 24px;
-      border-right: 1px solid var(--line);
-    }
-
-    .install-step:last-child { border-right: 0; }
-
-    .install-step .num {
-      color: var(--pink);
-      font: 10px/1 var(--mono);
-      letter-spacing: .12em;
-    }
-
-    .install-step h3 {
-      margin: 33px 0 12px;
-      font: 500 28px/1 var(--serif);
-    }
-
-    .install-step p {
-      min-height: 58px;
-      margin: 0 0 20px;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.55;
-    }
-
-    .mini-code {
-      display: block;
-      overflow-x: auto;
-      padding: 15px;
-      border: 1px solid var(--line-soft);
-      border-radius: 7px;
-      background: #08070c;
-      color: #cfc8d2;
-      font: 10.5px/1.62 var(--mono);
-      white-space: pre;
-    }
-
-    .cta {
-      padding: 120px 0 130px;
-      text-align: center;
-    }
-
-    .cta .section-id {
-      justify-content: flex-start;
-      text-align: left;
-    }
-
-    .cta .section-id::after { display: none; }
-
-    .cta h2 {
-      margin: 25px auto 22px;
-      max-width: 900px;
-      font: 500 clamp(56px, 8vw, 102px)/.88 var(--serif);
-      letter-spacing: -.06em;
-    }
-
-    .cta h2 em {
-      color: var(--pink);
-      font-weight: 400;
-    }
-
-    .cta p {
-      max-width: 650px;
-      margin: 0 auto;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.7;
-    }
-
-    .cta-actions {
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 34px;
-    }
-
-    .btn {
-      min-height: 48px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 17px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(255,255,255,.02);
-      color: var(--text);
-      font: 650 11px/1 var(--mono);
-      text-transform: uppercase;
-      letter-spacing: .07em;
-    }
-
-    .btn.primary {
-      border-color: var(--pink);
-      background: var(--pink);
-      color: #140b12;
-    }
-
-    .btn:hover { transform: translateY(-1px); }
-
-    footer {
-      min-height: 94px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      border-top: 1px solid var(--line-soft);
-      color: #6d6871;
-      font: 10px/1.3 var(--mono);
-      letter-spacing: .08em;
-      text-transform: uppercase;
-    }
-
-    @media (max-width: 920px) {
-      .hero {
-        min-height: auto;
-        grid-template-columns: 1fr;
-        gap: 58px;
-      }
-      .hero-aside { max-width: 460px; }
-      .stats { grid-template-columns: 1fr 1fr; }
-      .stat:nth-child(2) { border-right: 0; }
-      .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
-      .story {
-        grid-template-columns: 56px 1fr;
-        min-height: auto;
-      }
-      .story > :last-child {
-        grid-column: 2;
-        margin-top: 18px;
-      }
-      .install-head { grid-template-columns: 1fr; gap: 22px; }
-      .install-grid { grid-template-columns: 1fr; }
-      #codex-hook .install-grid { grid-template-columns: 1fr; }
-      .hook-behavior {
-        grid-template-columns: 1fr;
-        gap: 12px;
-      }
-      .install-step {
-        min-height: auto;
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
-      }
-      .install-step:last-child { border-bottom: 0; }
-      .install-step p { min-height: 0; }
-    }
-
-    @media (max-width: 620px) {
-      .shell {
-        width: min(calc(100% - 24px), var(--max));
-      }
-
-      .nav {
-        min-height: 62px;
-        gap: 12px;
-      }
-
-      .brand {
-        gap: 8px;
-        font-size: 10px;
-        letter-spacing: .13em;
-      }
-
-      .nav-links {
-        gap: 16px;
-        font-size: 10px;
-      }
-
-      .nav-links a:not(:last-child):not([href="#why-jev"]) { display: none; }
-
-      .hero {
-        padding: 54px 0 52px;
-        gap: 42px;
-      }
-
-      .section-id {
-        gap: 10px;
-        font-size: 9.5px;
-        letter-spacing: .12em;
-      }
-
-      .section-id::after { width: 42px; }
-
-      h1 {
-        margin: 26px 0 22px;
-        font-size: clamp(46px, 15.5vw, 68px);
-        line-height: .9;
-        letter-spacing: -.055em;
-      }
-
-      .hero-copy {
-        font-size: 16px;
-        line-height: 1.6;
-      }
-
-      .install {
-        margin-top: 28px;
-      }
-
-      .command {
-        min-height: 0;
-        align-items: stretch;
-        flex-wrap: wrap;
-        gap: 0;
-        padding: 0;
-        overflow: hidden;
-      }
-
-      .prompt {
-        padding: 17px 0 0 15px;
-      }
-
-      .command code {
-        width: calc(100% - 34px);
-        flex: 0 0 calc(100% - 34px);
-        padding: 15px 14px 15px 9px;
-        overflow: visible;
-        white-space: normal;
-        overflow-wrap: anywhere;
-        line-height: 1.6;
-      }
-
-      .copy {
-        width: 100%;
-        min-height: 42px;
-        border-left: 0;
-        border-top: 1px solid var(--line);
-        padding: 0 15px;
-        text-align: left;
-      }
-
-      .hero-aside {
-        max-width: none;
-        padding-left: 15px;
-      }
-
-      .route-word {
-        font-size: 27px;
-      }
-
-      .stats {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .stat {
-        min-height: 105px;
-        padding: 22px 16px;
-        border-right: 1px solid var(--line);
-        border-bottom: 1px solid var(--line);
-      }
-
-      .stat:nth-child(2n) { border-right: 0; }
-      .stat:nth-last-child(-n+2) { border-bottom: 0; }
-
-      .stat strong {
-        margin-bottom: 13px;
-        font-size: 25px;
-      }
-
-      .story {
-        grid-template-columns: 1fr;
-        gap: 17px;
-        padding: 68px 0;
-      }
-
-      .story > :last-child {
-        grid-column: auto;
-        margin-top: 10px;
-      }
-
-      .story h2 {
-        margin-top: 0;
-        font-size: clamp(40px, 13vw, 56px);
-        line-height: .96;
-      }
-
-      .story-copy {
-        font-size: 15px;
-        line-height: 1.65;
-      }
-
-      .terminal,
-      .jev-benchmark,
-      .benchmark-panel,
-      .mcts-tree {
-        width: 100%;
-        min-width: 0;
-      }
-
-      pre {
-        padding: 17px;
-        font-size: 10.5px;
-        line-height: 1.7;
-      }
-
-      .benchmark-intro { grid-column: 1 / -1; }
-      .jev-compare {
-        max-width: none;
-        margin: 22px 0 20px;
-      }
-
-      .jev-stat {
-        padding: 0;
-        border: 0;
-      }
-
-      .jev-saving {
-        font-size: clamp(58px, 19vw, 86px);
-      }
-
-      .jev-saving-label {
-        max-width: none;
-      }
-      .jev-benchmark figcaption,
-      .jev-cost-row { padding: 22px 20px; }
-      .jev-reduction,
-      .jev-source { padding: 18px 20px; }
-      .bench-toolbar { padding: 20px; }
-      .bench-controls { width: 100%; }
-      .bench-controls button { flex: 1; padding: 10px 12px; }
-
-      .bench-experiment {
-        grid-template-columns: 1fr;
-        gap: 18px;
-        padding: 22px 20px;
-      }
-
-      .bench-experiment > :first-child {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        align-items: baseline;
-        column-gap: 12px;
-      }
-
-      .bench-experiment-kind { grid-column: 1; margin-bottom: 0; }
-      .bench-speed { grid-column: 2; grid-row: 1; font-size: 26px; }
-      .bench-speed-label { grid-column: 2; grid-row: 2; max-width: 110px; margin-top: 4px; text-align: right; }
-      .bench-context { padding: 16px 20px; }
-      .bench-details summary { padding: 18px 20px; }
-      .bench-methodology { grid-template-columns: 1fr; padding: 0 20px 22px; }
-
-      .mcts-tree {
-        min-height: 320px;
-        padding: 28px 8px 48px;
-      }
-
-      .tree {
-        width: 100%;
-        gap: 22px;
-      }
-
-      .tree-row {
-        gap: 7px;
-      }
-
-      .node {
-        min-width: 0;
-        width: min(30%, 91px);
-        padding: 10px 5px;
-        font-size: 9px;
-      }
-
-      .tree-row:first-child .node {
-        width: min(44%, 120px);
-      }
-
-      .mcts-badge {
-        right: 10px;
-        bottom: 11px;
-        left: 10px;
-        text-align: center;
-        line-height: 1.4;
-      }
-
-      .install-section {
-        padding: 76px 0 84px;
-      }
-
-      .install-head {
-        margin-bottom: 30px;
-      }
-
-      .install-head h2 {
-        font-size: clamp(42px, 13vw, 58px);
-        line-height: .95;
-      }
-
-      .install-step {
-        padding: 21px 18px;
-      }
-
-      .install-step h3 {
-        margin-top: 25px;
-      }
-
-      .mini-code {
-        padding: 13px;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-      }
-
-      .cta {
-        padding: 82px 0 90px;
-      }
-
-      .cta h2 {
-        font-size: clamp(48px, 15vw, 68px);
-      }
-
-      .cta p {
-        font-size: 15px;
-      }
-
-      .cta-actions {
-        display: grid;
-        grid-template-columns: 1fr;
-        width: 100%;
-      }
-
-      .btn {
-        width: 100%;
-        min-height: 50px;
-      }
-
-      footer {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 8px;
-        padding: 25px 0 30px;
-      }
-    }
-
-    @media (max-width: 380px) {
-      .shell { width: min(calc(100% - 20px), var(--max)); }
-
-      .brand {
-        max-width: 160px;
-        line-height: 1.2;
-      }
-
-      h1 {
-        font-size: clamp(42px, 15vw, 58px);
-      }
-
-      .stats {
-        grid-template-columns: 1fr;
-      }
-
-      .stat,
-      .stat:nth-child(2n) {
-        border-right: 0;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .stat:last-child { border-bottom: 0; }
-
-      .tree-row { gap: 5px; }
-
-      .node {
-        width: 31%;
-        font-size: 8.5px;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
-      .btn:hover { transform: none; }
+      background-size:46px 46px,46px 46px,auto,auto,auto;
+      font-family:var(--sans);
+    }
+    a{color:inherit;text-decoration:none}
+    code,pre,button{font-family:var(--mono)}
+    .shell{width:min(calc(100% - 40px),var(--max));margin:auto}
+    .nav{
+      min-height:76px;display:flex;align-items:center;justify-content:space-between;
+      border-bottom:1px solid var(--line-soft);gap:24px
+    }
+    .brand{display:flex;align-items:center;gap:11px;font:650 12px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--pink);box-shadow:0 0 20px rgba(255,66,190,.85)}
+    .nav-links{display:flex;gap:22px;color:var(--muted);font:11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+    .nav-links a:hover{color:var(--text)}
+    .hero{
+      min-height:760px;padding:92px 0 80px;display:grid;
+      grid-template-columns:minmax(0,1fr) 310px;gap:70px;align-items:end;
+      border-bottom:1px solid var(--line)
+    }
+    .eyebrow,.section-id{
+      color:var(--pink);font:11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase
+    }
+    .eyebrow:after,.section-id:after{content:"";display:inline-block;width:64px;height:1px;margin:0 0 3px 14px;background:currentColor;opacity:.55}
+    h1{
+      margin:34px 0 28px;max-width:920px;
+      font:500 clamp(64px,9vw,126px)/.84 var(--serif);letter-spacing:-.062em
+    }
+    h1 em,h2 em{color:var(--pink);font-weight:400}
+    .hero-copy{max-width:720px;margin:0;color:#bbb5bf;font-size:clamp(17px,2vw,21px);line-height:1.58}
+    .hero-copy strong,.copy strong{color:var(--text)}
+    .hero-aside{padding-left:25px;border-left:1px solid var(--line)}
+    .aside-label{color:#77717c;font:10px/1.5 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+    .loop-word{margin:19px 0 10px;font:600 28px/1 var(--mono);letter-spacing:-.055em}
+    .loop-note{color:var(--pink);font:11px/1.5 var(--mono)}
+    .mini-loop{margin-top:28px;display:grid;gap:0}
+    .mini-loop div{display:flex;justify-content:space-between;padding:11px 0;border-top:1px solid var(--line-soft);color:var(--muted);font:10px/1.2 var(--mono)}
+    .mini-loop strong{color:var(--text);font-weight:500}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+    .stat{padding:27px 25px;min-height:122px;border-right:1px solid var(--line)}
+    .stat:last-child{border:0}
+    .stat strong{display:block;margin-bottom:15px;font:500 29px/1 var(--serif)}
+    .stat span{color:var(--muted);font:10px/1.4 var(--mono);letter-spacing:.11em;text-transform:uppercase}
+    .section{
+      padding:105px 0;border-bottom:1px solid var(--line);
+      display:grid;grid-template-columns:110px minmax(0,1fr);gap:38px
+    }
+    .section-no{color:var(--pink);font:11px/1 var(--mono);letter-spacing:.14em}
+    .content{min-width:0}
+    h2{margin:-13px 0 23px;max-width:850px;font:500 clamp(48px,6.5vw,84px)/.92 var(--serif);letter-spacing:-.052em}
+    .copy{max-width:720px;color:var(--muted);font-size:16px;line-height:1.72}
+    .loop-panel{
+      margin-top:45px;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+      background:var(--panel-strong)
+    }
+    .panel-head{padding:20px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px}
+    .panel-head strong{font:500 12px/1.5 var(--mono)}
+    .panel-head span{color:var(--muted);font:10px/1.5 var(--mono);text-transform:uppercase}
+    .flow{padding:28px;display:grid;grid-template-columns:repeat(5,1fr);gap:0}
+    .flow-step{position:relative;min-height:180px;padding:20px;border:1px solid var(--line);background:rgba(255,255,255,.018)}
+    .flow-step:first-child{border-radius:9px 0 0 9px}
+    .flow-step:last-child{border-radius:0 9px 9px 0}
+    .flow-step:not(:last-child){border-right:0}
+    .flow-step:after{content:"→";position:absolute;right:-10px;top:50%;transform:translateY(-50%);z-index:2;color:var(--pink);font:14px var(--mono)}
+    .flow-step:last-child:after{display:none}
+    .flow-step.active{background:var(--pink-soft);border-color:rgba(255,66,190,.35)}
+    .flow-num{color:var(--pink);font:10px var(--mono)}
+    .flow-title{margin:24px 0 9px;font:500 13px/1.4 var(--mono)}
+    .flow-text{color:var(--muted);font-size:12px;line-height:1.55}
+    .state-box{
+      margin-top:14px;padding:15px 18px;border:1px dashed rgba(255,255,255,.13);
+      color:var(--muted);font:11px/1.7 var(--mono)
+    }
+    .state-box b{color:var(--text);font-weight:500}
+    .decision-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:35px}
+    .card{padding:23px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+    .card.active{border-color:rgba(255,66,190,.35);background:var(--pink-soft)}
+    .card h3{margin:0 0 10px;font:500 13px/1.4 var(--mono)}
+    .card p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+    .tag{float:right;color:var(--pink);font:10px var(--mono)}
+    .terminal{margin-top:35px;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:rgba(7,7,11,.83)}
+    .terminal-top{height:42px;padding:0 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line-soft);color:#6d6871;font:10px var(--mono);text-transform:uppercase}
+    .dots{display:flex;gap:5px}.dots i{width:6px;height:6px;border-radius:50%;background:#39343d}
+    pre{margin:0;padding:23px;overflow:auto;color:#cbc5ce;font:11.5px/1.8 var(--mono)}
+    .pink{color:var(--pink)}.dim{color:#67616b}
+    .compare{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:35px}
+    .metric{padding:28px;border:1px solid var(--line);border-radius:11px;background:var(--panel)}
+    .metric-value{display:block;color:var(--pink);font:500 clamp(48px,6vw,78px)/.9 var(--serif);letter-spacing:-.06em}
+    .metric-label{display:block;margin-top:12px;color:#d8d2da;font-size:14px;line-height:1.5}
+    .metric-note{display:block;margin-top:8px;color:var(--muted);font:10px/1.6 var(--mono);text-transform:uppercase;letter-spacing:.08em}
+    .hook-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:35px}
+    .hook{padding:21px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+    .hook b{display:block;font:500 12px/1.5 var(--mono);margin-bottom:8px}
+    .hook span{color:var(--muted);font-size:12px;line-height:1.5}
+    .install-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:35px}
+    .install-card{padding:25px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+    .install-card .num{color:var(--pink);font:10px var(--mono);letter-spacing:.1em}
+    .install-card h3{margin:18px 0 9px;font:500 14px/1.4 var(--mono)}
+    .install-card p{color:var(--muted);font-size:13px;line-height:1.6}
+    .mini-code{display:block;margin-top:16px;padding:14px;overflow:auto;border:1px solid var(--line-soft);border-radius:7px;background:#08070b;color:#cbc5ce;font:10.5px/1.7 var(--mono);white-space:pre}
+    .cta{padding:110px 0 120px;text-align:center}
+    .cta h2{margin:30px auto 22px;max-width:850px}
+    .cta p{max-width:650px;margin:auto;color:var(--muted);font-size:15px;line-height:1.7}
+    .actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:30px}
+    .btn{display:inline-block;padding:13px 18px;border:1px solid var(--line);border-radius:7px;font:11px var(--mono);text-transform:uppercase;letter-spacing:.06em}
+    .btn:hover{border-color:rgba(255,66,190,.45)}
+    .btn.primary{background:var(--pink);border-color:var(--pink);color:#130b11}
+    footer{padding:25px 0 35px;border-top:1px solid var(--line-soft);display:flex;justify-content:space-between;color:#6f6974;font:10px var(--mono);letter-spacing:.04em}
+    @media(max-width:900px){
+      .hero{grid-template-columns:1fr;min-height:auto;gap:50px}
+      .hero-aside{max-width:420px}
+      .flow{grid-template-columns:1fr}
+      .flow-step{min-height:auto;border-right:1px solid var(--line)!important;border-radius:0!important}
+      .flow-step:first-child{border-radius:9px 9px 0 0!important}.flow-step:last-child{border-radius:0 0 9px 9px!important}
+      .flow-step:after{content:"↓";right:50%;top:auto;bottom:-10px;transform:translateX(50%)}
+      .flow-step:last-child:after{display:none}
+      .decision-grid,.compare{grid-template-columns:1fr}
+      .hook-grid,.install-grid{grid-template-columns:1fr 1fr}
+    }
+    @media(max-width:640px){
+      .shell{width:min(calc(100% - 28px),var(--max))}
+      .nav-links{display:none}
+      .hero{padding:70px 0}
+      h1{font-size:clamp(58px,18vw,90px)}
+      .stats{grid-template-columns:1fr 1fr}
+      .stat:nth-child(2){border-right:0}.stat:nth-child(-n+2){border-bottom:1px solid var(--line)}
+      .section{display:block;padding:80px 0}
+      .section-no{margin-bottom:35px}
+      .hook-grid,.install-grid{grid-template-columns:1fr}
+      footer{display:block}footer span{display:block;margin-top:8px}
     }
   </style>
 </head>
+
 <body>
   <div class="shell">
     <nav class="nav">
-      <a class="brand" href="#top">
-        <span class="brand-dot"></span>
-        Harness Router
-      </a>
+      <a class="brand" href="#"><i class="dot"></i> harness-router</a>
       <div class="nav-links">
-        <a href="#why">Approach</a>
-        <a href="#why-jev">Why Jev?</a>
-        <a href="#mcp">MCP</a>
-        <a href="#mcts">MCTS</a>
-        <a href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">
-          GitHub <span id="stars"></span>
-        </a>
+        <a href="#loop">loop</a>
+        <a href="#decision">decision</a>
+        <a href="#hooks">hooks</a>
+        <a href="#install">install</a>
+        <a href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">github ↗</a>
       </div>
     </nav>
 
-    <main id="top">
-      <section class="hero">
-        <div>
-          <div class="section-id">$ 01 · Decision layer</div>
-          <h1>
-            Route tool calls<br>
-            <em>before</em> they<br>
-            run.
-          </h1>
-          <p class="hero-copy">
-            <strong>Install once. Route tool calls across every agent harness.</strong><br>
-            <strong>harness-router</strong> works two ways: use the skill for explicit routing,
-            or let hooks precompute the next tool automatically. Fast <code>route</code>
-            handles ordinary choices; real ambiguity can escalate to Jev-backed MCTS.
-          </p>
-
-          <div class="install">
-            <div class="install-tabs">
-              <span>uv</span><span>pip</span><span>source</span>
-            </div>
-            <div class="command">
-              <span class="prompt">$</span>
-              <code>uv tool install --force --with 'mcp&gt;=2,&lt;3' 'git+https://github.com/Protocol-Lattice/harness-router.git@main'</code>
-              <button class="copy" type="button" data-copy="uv tool install --force --with 'mcp>=2,<3' 'git+https://github.com/Protocol-Lattice/harness-router.git@main'">copy</button>
-            </div>
-          </div>
-        </div>
-
-        <aside class="hero-aside">
-          <div class="eyebrow">live decision</div>
-          <div class="route-word">read_file</div>
-          <div class="confidence">confidence · 0.93</div>
-          <div class="micro-flow">
-            <div><span>state</span><strong>compact</strong></div>
-            <div><span>candidates</span><strong>4</strong></div>
-            <div><span>provider</span><strong>Jev</strong></div>
-            <div><span>rounds</span><strong>1</strong></div>
-          </div>
-        </aside>
-      </section>
-
-      <div class="stats">
-        <div class="stat">
-          <strong>2</strong>
-          <span>MCP tools</span>
-        </div>
-        <div class="stat">
-          <strong>1</strong>
-          <span>Jev prior max in MCTS</span>
-        </div>
-        <div class="stat">
-          <strong>0</strong>
-          <span>extra model reasoning required before hook routing</span>
-        </div>
-        <div class="stat">
-          <strong>MIT</strong>
-          <span>open source</span>
-        </div>
+    <header class="hero">
+      <div>
+        <div class="eyebrow">$ decision layer</div>
+        <h1>Decide.<br>Execute.<br><em>Observe.</em></h1>
+        <p class="hero-copy">
+          Harness Router sits inside the tool lifecycle of an agent harness.
+          <strong>Pre-decision</strong> chooses or validates the next tool.
+          <strong>Post-tool-use</strong> observes what happened. The resulting state can feed the next decision.
+        </p>
       </div>
-
-      <section class="story" id="why">
-        <div class="story-no">01</div>
-        <div>
-          <h2>Stop reasoning about <em>obvious tool calls.</em></h2>
-          <p class="story-copy">
-            With the skill, Codex can delegate closed-choice tool selection to Harness Router.
-            With hooks enabled, the Router precomputes the next decision after each tool result.
-            Where the harness exposes stronger control, the integration can enforce that decision
-            before the next model/tool step without requiring an explicit Router tool call.
-          </p>
+      <aside class="hero-aside">
+        <div class="aside-label">The loop</div>
+        <div class="loop-word">DECIDE → ACT</div>
+        <div class="loop-note">→ OBSERVE → DECIDE</div>
+        <div class="mini-loop">
+          <div><span>entry</span><strong>pre_decision</strong></div>
+          <div><span>execution</span><strong>tool call</strong></div>
+          <div><span>feedback</span><strong>post_tool_use</strong></div>
+          <div><span>next step</span><strong>state → decision</strong></div>
         </div>
-        <div class="decision-stack">
-          <div class="decision-card active">
-            <b><span>known file</span><span>→ read</span></b>
-            <p>The hook keeps the next decision aligned with the live discovered tool inventory.</p>
-          </div>
-          <div class="decision-card active">
-            <b><span>edit finished</span><span>→ test</span></b>
-            <p>Fast routing precomputes the next state transition before the following tool step.</p>
-          </div>
-          <div class="decision-card">
-            <b><span>4 plausible tools</span><span>→ route</span></b>
-            <p>Compact state in. One tool choice out.</p>
+      </aside>
+    </header>
+
+    <div class="stats">
+      <div class="stat"><strong>fast</strong><span>cache-first routing</span></div>
+      <div class="stat"><strong>Jev</strong><span>policy decision layer</span></div>
+      <div class="stat"><strong>MCTS</strong><span>ambiguous paths</span></div>
+      <div class="stat"><strong>5</strong><span>harness integrations</span></div>
+    </div>
+
+    <main>
+      <section class="section" id="loop">
+        <div class="section-no">01 · loop</div>
+        <div class="content">
+          <h2>The router is part of the <em>loop.</em></h2>
+          <p class="copy">
+            The important boundary is no longer just a tool interception. Harness Router has an entry point
+            before execution and an observation point after execution. That gives the integration a closed lifecycle:
+            <strong>decide → execute → observe → decide again</strong>.
+          </p>
+
+          <div class="loop-panel">
+            <div class="panel-head">
+              <strong>harness-router / control flow</strong>
+              <span>pre → execute → post → state</span>
+            </div>
+            <div class="flow">
+              <article class="flow-step active">
+                <div class="flow-num">01</div>
+                <div class="flow-title">PRE_DECISION</div>
+                <div class="flow-text">Inspect the pending action, available tools, cache and routing context.</div>
+              </article>
+              <article class="flow-step">
+                <div class="flow-num">02</div>
+                <div class="flow-title">DECIDE</div>
+                <div class="flow-text">Use cache, fast routing, Jev or escalate to MCTS when needed.</div>
+              </article>
+              <article class="flow-step">
+                <div class="flow-num">03</div>
+                <div class="flow-title">EXECUTE</div>
+                <div class="flow-text">The harness executes the selected tool subject to its own approvals and policies.</div>
+              </article>
+              <article class="flow-step active">
+                <div class="flow-num">04</div>
+                <div class="flow-title">POST_TOOL_USE</div>
+                <div class="flow-text">Observe the tool outcome: success, failure and execution context.</div>
+              </article>
+              <article class="flow-step">
+                <div class="flow-num">05</div>
+                <div class="flow-title">STATE → NEXT</div>
+                <div class="flow-text">Feed relevant outcome state into the next pre-decision.</div>
+              </article>
+            </div>
+            <div class="state-box">
+              <b>Closed loop:</b>
+              <code>pre_decision → decision → tool → post_tool_use → state → pre_decision</code>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="story" id="why-jev" aria-labelledby="why-jev-title">
-        <div class="story-no">02</div>
-        <div class="jev-intro">
-          <div class="benchmark-badge">TypeSafe AI · Workflow benchmark</div>
-          <h2 id="why-jev-title">Why <em>Jev?</em></h2>
-          <div class="jev-compare" aria-label="Jev cost comparison">
-            <div class="jev-stat">
-              <strong class="jev-saving">≈238×</strong>
-              <p class="jev-saving-label">
-                cheaper than GPT-6 Astra
-                <span>Input-token price · $0.042/MTok vs $10/MTok</span>
-              </p>
-            </div>
-          </div>
-          <p class="story-copy">
-            On published standard input-token rates, Jev is about <strong>238× cheaper</strong> than
-            GPT-6 Astra: <strong>$0.042 per million input tokens</strong> versus
-            <strong>$10</strong>. Jev output tokens are free, while GPT-6 Astra is
-            <strong>$50 per million output tokens</strong>, so the total request-cost gap can
-            be substantially larger depending on output usage.
+      <section class="section" id="decision">
+        <div class="section-no">02 · decision</div>
+        <div class="content">
+          <h2>Cheap when obvious.<br><em>Search when ambiguous.</em></h2>
+          <p class="copy">
+            Routing is deliberately hierarchical. A known decision should not pay for a model call.
+            An uncertain choice can use Jev, while a downstream workflow can escalate to bounded MCTS.
+            The router therefore spends computation where the decision actually needs it.
           </p>
-          <p class="story-copy">
-            The point is not to replace Codex’s planner. Jev handles the narrow,
-            closed-choice routing step; Codex keeps the broader reasoning and execution loop.
-          </p>
-          <div class="jev-links">
-            <a href="https://evals.typesafe.ai/" target="_blank" rel="noreferrer">Explore TypeSafe’s benchmark ↗</a>
-            <a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev" target="_blank" rel="noreferrer">Read the methodology ↗</a>
-          </div>
-        </div>
-        <figure class="jev-benchmark" aria-labelledby="jev-chart-title" aria-describedby="jev-chart-unit jev-source">
-          <figcaption>
-            <h3 id="jev-chart-title">TypeSafe AI vs GPT-6 Astra</h3>
-            <p class="jev-chart-unit" id="jev-chart-unit">Input price per 1M tokens · USD · linear scale · lower is better</p>
-          </figcaption>
-          <div class="jev-cost-row highlight">
-            <div class="jev-model"><strong>TypeSafe AI · Jev</strong><span>output free</span></div>
-            <p class="jev-cost">$0.042</p>
-            <div class="jev-cost-track" aria-hidden="true"><span class="jev-cost-fill"></span></div>
-          </div>
-          <div class="jev-cost-row">
-            <div class="jev-model"><strong>OpenAI · GPT-6 Astra</strong><span>$50 / MTok output</span></div>
-            <p class="jev-cost">$10.00</p>
-            <div class="jev-cost-track" aria-hidden="true"><span class="jev-cost-fill"></span></div>
-          </div>
-          <p class="jev-reduction">Jev input is about <strong>238× cheaper</strong> than GPT-6 Astra.</p>
-          <p class="jev-source" id="jev-source">
-            Sources:
-            <a href="https://typesafe.ai/blog/introducing-system-one-models-and-jev" target="_blank" rel="noreferrer">TypeSafe AI pricing</a>
-            and
-            <a href="https://developers.openai.com/api/docs/models/gpt-6-astra" target="_blank" rel="noreferrer">OpenAI GPT-6 Astra pricing</a>.
-            Standard published token rates; actual end-to-end request cost depends on input, output, caching, and workload.
-          </p>
-        </figure>
-      </section>
 
-      <section class="story" id="mcp">
-        <div class="story-no">03</div>
-        <div>
-          <h2>Native MCP. <em>One tiny choice.</em></h2>
-          <p class="story-copy">
-            Expose both routing tools through a native stdio server in your MCP client.
-            <code>route</code> takes a compact goal, latest observation, and a small shortlist.
-            The server keeps its provider alive, reuses connections, and returns a tiny structured result.
-            The <a href="#codex-hook">Antigravity hook installer</a> also registers the server
-            in <code>.agents/mcp_config.json</code>, making <code>route</code> and
-            <code>route_mcts</code> available directly to the agent.
-          </p>
-        </div>
-        <div class="terminal">
-          <div class="terminal-top">
-            <span>~/.codex/config.toml</span>
-            <span class="terminal-dots"><i></i><i></i><i></i></span>
+          <div class="decision-grid">
+            <article class="card">
+              <h3>01 · CACHE <span class="tag">FASTEST</span></h3>
+              <p>Reuse a compatible previous decision before invoking the decision engine.</p>
+            </article>
+            <article class="card active">
+              <h3>02 · ROUTE <span class="tag">JEV</span></h3>
+              <p>Resolve ordinary tool selection with a lightweight policy decision.</p>
+            </article>
+            <article class="card">
+              <h3>03 · MCTS <span class="tag">DEEPER</span></h3>
+              <p>For ambiguous downstream choices, search a side-effect-free state graph.</p>
+            </article>
+            <article class="card">
+              <h3>04 · FEEDBACK <span class="tag">POST</span></h3>
+              <p>Observe the executed tool and make its outcome available to the next decision.</p>
+            </article>
           </div>
-          <pre><code><span class="pink">[mcp_servers.harness-router]</span>
-command = "harness-router-mcp"
-env_vars = ["OPENROUTER_API_KEY"]
-enabled = true
-startup_timeout_sec = 10
-tool_timeout_sec = 5
 
-<span class="dim"># then restart Codex</span>
-/mcp
-
-<span class="pink">route</span>
-<span class="pink">route_mcts</span></code></pre>
+          <div class="terminal">
+            <div class="terminal-top"><span>decision lifecycle</span><div class="dots"><i></i><i></i><i></i></div></div>
+            <pre><span class="dim">// every cycle starts with the current harness state</span>
+<span class="pink">pre_decision</span>(state, pending_call)
+    │
+    ├── cache hit ───────────────► decision
+    │
+    ├── obvious ─────────────────► route
+    │                                │
+    └── ambiguous ────────────────► route_mcts
+                                     │
+                                     ▼
+                                  execute
+                                     │
+                                     ▼
+                              <span class="pink">post_tool_use</span>(outcome)
+                                     │
+                                     ▼
+                                state update
+                                     │
+                                     └────────► next pre_decision</pre>
+          </div>
         </div>
       </section>
 
-      <section class="story" id="mcts">
-        <div class="story-no">04</div>
-        <div>
-          <h2>When one move is not enough, <em>search.</em></h2>
-          <p class="story-copy">
-            <code>route_mcts</code> explores a supplied side-effect-free state graph.
-            Jev can seed the root once; the remaining simulations are local.
-            The server never executes simulated writes, shell commands, browser mutations,
-            or network mutations. It selects only the <strong>first real action.</strong>
+      <section class="section" id="feedback">
+        <div class="section-no">03 · feedback</div>
+        <div class="content">
+          <h2>Execution becomes <em>context.</em></h2>
+          <p class="copy">
+            <code>post_tool_use</code> closes the gap between choosing a tool and knowing what that tool actually did.
+            A successful read, a failed command, or another execution outcome can become part of the context used by
+            the following decision. This is the architectural bridge from routing individual calls toward controlling
+            the sequence of next actions.
           </p>
-        </div>
-        <div class="mcts-tree">
-          <div class="tree">
-            <div class="tree-row">
-              <div class="node best">root<br>state</div>
-            </div>
-            <div class="tree-row">
-              <div class="node">quick<br>0.60</div>
-              <div class="node best">invest<br>0.78</div>
-              <div class="node">verify<br>0.31</div>
-            </div>
-            <div class="tree-row">
-              <div class="node">inspect</div>
-              <div class="node best">finish<br>1.00</div>
-              <div class="node">fallback</div>
-            </div>
+
+          <div class="compare">
+            <article class="metric">
+              <span class="metric-value">pre</span>
+              <span class="metric-label">Decide what should happen next.</span>
+              <span class="metric-note">pending action · tools · cache · routing policy</span>
+            </article>
+            <article class="metric">
+              <span class="metric-value">post</span>
+              <span class="metric-label">Record what happened after execution.</span>
+              <span class="metric-note">outcome · error · result · state transition</span>
+            </article>
           </div>
-          <div class="mcts-badge">4,096 sims · depth 3 benchmark profile</div>
+
+          <div class="state-box">
+            <b>Important boundary:</b> Harness Router does not claim ownership of every part of an agent's reasoning.
+            It provides a decision/control-flow layer around tool execution while the host harness retains its own
+            planning, permissions and execution semantics.
+          </div>
         </div>
       </section>
 
-      <section class="story" id="benchmark">
-        <div class="story-no">05</div>
-        <div class="benchmark-intro">
-          <div class="benchmark-badge">Decision latency · 26 Sep 2026</div>
-          <h2>Time to choose <em>a tool.</em></h2>
-          <p class="story-copy">
-            Two experiments. <strong>24 paired decisions each.</strong> Four, eight, or sixteen candidates.
-            Timing stopped at the choice; selected tools were never executed.
+      <section class="section" id="hooks">
+        <div class="section-no">04 · hooks</div>
+        <div class="content">
+          <h2>One loop. Multiple <em>harnesses.</em></h2>
+          <p class="copy">
+            The integration adapts the same routing lifecycle to different agent environments.
+            Hook behavior is provider-specific, but the architectural role stays the same:
+            enter before the action, route when appropriate, observe after execution where the harness exposes
+            the corresponding lifecycle event.
           </p>
-        </div>
-        <div class="benchmark-panel">
-          <figure class="bench-chart" aria-labelledby="bench-chart-title" aria-describedby="bench-chart-unit bench-context">
-            <figcaption class="bench-toolbar">
-              <div>
-                <h3 id="bench-chart-title">Observed decision time</h3>
-                <p class="bench-chart-unit" id="bench-chart-unit">Milliseconds · same scale · lower is faster</p>
-              </div>
-              <div class="bench-controls" role="group" aria-label="Latency statistic">
-                <button type="button" data-bench-metric="mean" aria-pressed="true" aria-controls="bench-mean-view">Mean</button>
-                <button type="button" data-bench-metric="median" aria-pressed="false" aria-controls="bench-median-view">Median</button>
-                <button type="button" data-bench-metric="p95" aria-pressed="false" aria-controls="bench-p95-view">p95</button>
-              </div>
-            </figcaption>
-            <div class="bench-views">
-              <div class="bench-view" id="bench-mean-view" data-bench-view="mean" role="group" aria-label="Mean decision latency">
-                <section class="bench-experiment" aria-labelledby="bench-route-mean-title">
-                  <div>
-                    <h4 id="bench-route-mean-title"><code>route</code></h4>
-                    <p class="bench-experiment-kind">Ordinary tool choices</p>
-                    <strong class="bench-speed">9.5×</strong>
-                    <span class="bench-speed-label">faster · observed mean latency</span>
-                  </div>
-                  <div>
-                    <div class="bench-bar" style="--latency: 3842.1">
-                      <div class="bench-bar-label"><span>Codex</span><strong>3,842.1 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <div class="bench-bar router" style="--latency: 404.5">
-                      <div class="bench-bar-label"><span>Harness-router</span><strong>404.5 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <p class="bench-quality"><strong>24/24 choices match Codex</strong><span>Agreement only</span></p>
-                  </div>
-                </section>
-                <section class="bench-experiment" aria-labelledby="bench-route_mcts-mean-title">
-                  <div>
-                    <h4 id="bench-route_mcts-mean-title"><code>route_mcts</code></h4>
-                    <p class="bench-experiment-kind">Three-step trees · 4,096 sims</p>
-                    <strong class="bench-speed">12.3×</strong>
-                    <span class="bench-speed-label">faster · observed mean latency</span>
-                  </div>
-                  <div>
-                    <div class="bench-bar" style="--latency: 4772.4">
-                      <div class="bench-bar-label"><span>Codex</span><strong>4,772.4 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <div class="bench-bar router" style="--latency: 388">
-                      <div class="bench-bar-label"><span>Harness-router</span><strong>388 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <p class="bench-quality"><strong>24/24 optimal · 100%</strong><span>Codex: 24/24 · 100%</span></p>
-                  </div>
-                </section>
-              </div>
-              <div class="bench-view" id="bench-median-view" data-bench-view="median" role="group" aria-label="Median decision latency" hidden>
-                <section class="bench-experiment" aria-labelledby="bench-route-median-title">
-                  <div>
-                    <h4 id="bench-route-median-title"><code>route</code></h4>
-                    <p class="bench-experiment-kind">Ordinary tool choices</p>
-                    <strong class="bench-speed">10.2×</strong>
-                    <span class="bench-speed-label">faster · observed median latency</span>
-                  </div>
-                  <div>
-                    <div class="bench-bar" style="--latency: 3384">
-                      <div class="bench-bar-label"><span>Codex</span><strong>3,384 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <div class="bench-bar router" style="--latency: 332">
-                      <div class="bench-bar-label"><span>Harness-router</span><strong>332 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <p class="bench-quality"><strong>24/24 choices match Codex</strong><span>Agreement only</span></p>
-                  </div>
-                </section>
-                <section class="bench-experiment" aria-labelledby="bench-route_mcts-median-title">
-                  <div>
-                    <h4 id="bench-route_mcts-median-title"><code>route_mcts</code></h4>
-                    <p class="bench-experiment-kind">Three-step trees · 4,096 sims</p>
-                    <strong class="bench-speed">11.6×</strong>
-                    <span class="bench-speed-label">faster · observed median latency</span>
-                  </div>
-                  <div>
-                    <div class="bench-bar" style="--latency: 4328.5">
-                      <div class="bench-bar-label"><span>Codex</span><strong>4,328.5 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <div class="bench-bar router" style="--latency: 372.5">
-                      <div class="bench-bar-label"><span>Harness-router</span><strong>372.5 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <p class="bench-quality"><strong>24/24 optimal · 100%</strong><span>Codex: 24/24 · 100%</span></p>
-                  </div>
-                </section>
-              </div>
-              <div class="bench-view" id="bench-p95-view" data-bench-view="p95" role="group" aria-label="p95 decision latency" hidden>
-                <section class="bench-experiment" aria-labelledby="bench-route-p95-title">
-                  <div>
-                    <h4 id="bench-route-p95-title"><code>route</code></h4>
-                    <p class="bench-experiment-kind">Ordinary tool choices</p>
-                    <strong class="bench-speed">9.0×</strong>
-                    <span class="bench-speed-label">faster · observed p95 latency</span>
-                  </div>
-                  <div>
-                    <div class="bench-bar" style="--latency: 6435">
-                      <div class="bench-bar-label"><span>Codex</span><strong>6,435 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <div class="bench-bar router" style="--latency: 718">
-                      <div class="bench-bar-label"><span>Harness-router</span><strong>718 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <p class="bench-quality"><strong>24/24 choices match Codex</strong><span>Agreement only</span></p>
-                  </div>
-                </section>
-                <section class="bench-experiment" aria-labelledby="bench-route_mcts-p95-title">
-                  <div>
-                    <h4 id="bench-route_mcts-p95-title"><code>route_mcts</code></h4>
-                    <p class="bench-experiment-kind">Three-step trees · 4,096 sims</p>
-                    <strong class="bench-speed">12.8×</strong>
-                    <span class="bench-speed-label">faster · observed p95 latency</span>
-                  </div>
-                  <div>
-                    <div class="bench-bar" style="--latency: 6958">
-                      <div class="bench-bar-label"><span>Codex</span><strong>6,958 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <div class="bench-bar router" style="--latency: 545">
-                      <div class="bench-bar-label"><span>Harness-router</span><strong>545 ms</strong></div>
-                      <div class="bench-track" aria-hidden="true"><div class="bench-fill"></div></div>
-                    </div>
-                    <p class="bench-quality"><strong>24/24 optimal · 100%</strong><span>Codex: 24/24 · 100%</span></p>
-                  </div>
-                </section>
-              </div>
-            </div>
-            <p class="bench-context" id="bench-context">
-              Each experiment has its own Codex baseline and different timing boundaries.
-              Ratios compare observed latency. The MCTS budget was tuned on these same 24 cases.
-              A cached path is about 721× faster than invoking the router; this comparison is separate from the unique-input runs above.
-            </p>
-          </figure>
-          <details class="bench-details">
-            <summary>Methodology &amp; source data</summary>
-            <div class="bench-methodology">
-              <div>
-                <h4>What the clocks include</h4>
-                <p>
-                  Codex chose a name only; its timer includes response generation, host scheduling, and dispatch.
-                  Router timings include MCP transport and the provider round trip; MCTS also includes local search.
-                  Graph preparation is excluded. Pure reasoning time and task completion time were not measured.
-                </p>
-              </div>
-              <div>
-                <h4>How to read the results</h4>
-                <p>
-                  These exploratory runs used different workloads in an existing Codex conversation, with cases authored by Codex.
-                  They do not isolate the cost of MCTS over ordinary routing.
-                  Matching choices measure agreement; the MCTS test checks the highest-reward branch.
-                  No Python scripts or OpenAI API calls were used.
-                </p>
-              </div>
-              <div>
-                <h4><code>route</code> · 24 paired choices</h4>
-                <p>
-                  Ordinary tool selection with 4, 8, or 16 candidates. All measured samples are included.
-                  Zero router fallbacks or errors. One 695 ms warmup is excluded.
-                </p>
-                <div class="bench-links">
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/decision-latency-2026-09-26.md">Report ↗</a>
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/decision-latency-2026-09-26.json">Raw timings ↗</a>
-                </div>
-              </div>
-              <div>
-                <h4><code>route_mcts</code> · 24 paired trees</h4>
-                <p>
-                  4,096 simulations, depth 3, Jev prior enabled. One policy evaluation per response.
-                  A separate budget check and this timed rerun each reached 24/24 on the same fixtures;
-                  this is not a held-out result. All measured samples are included, with zero final fallbacks or errors.
-                  Budget-selection calls and a 412 ms pre-run check are excluded from these timings.
-                </p>
-                <div class="bench-links">
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/mcts-4096-decision-latency-2026-09-26.md">MCTS report ↗</a>
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/mcts-4096-decision-latency-2026-09-26.json">Raw timings ↗</a>
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/benchmark-results/mcts-decision-latency-2026-09-26.md">Earlier 32-simulation run ↗</a>
-                </div>
-              </div>
-            </div>
-          </details>
+
+          <div class="hook-grid">
+            <article class="hook"><b>Codex</b><span>Project hooks for discovery and tool lifecycle integration.</span></article>
+            <article class="hook"><b>Claude Code</b><span>Project hooks around the native tool lifecycle.</span></article>
+            <article class="hook"><b>ohmypi</b><span>Extension-based integration with runtime tool access.</span></article>
+            <article class="hook"><b>Antigravity</b><span>Hook integration plus the Harness Router MCP server.</span></article>
+            <article class="hook"><b>DeepSeek Harness</b><span>Pre-execution bridge for routing in the supported lifecycle.</span></article>
+            <article class="hook"><b>Fail open</b><span>Routing failure does not silently become a new execution policy.</span></article>
+          </div>
         </div>
       </section>
 
-      <section class="install-section" id="codex-hook">
-        <div class="install-head">
-          <div>
-            <div class="section-id">$ 06 · Project Hooks</div>
-            <h2>Discover tools. Own the next step.</h2>
-          </div>
-          <p>
-            Choose Codex, Claude Code, ohmypi, Antigravity, or DeepSeek Harness. The integration reads the available tools,
-            then uses Harness Router to precompute and enforce the next tool where the harness allows it.
+      <section class="section" id="install">
+        <div class="section-no">05 · install</div>
+        <div class="content">
+          <h2>Install the layer.<br><em>Keep the harness.</em></h2>
+          <p class="copy">
+            Harness Router is designed to sit beside the existing agent harness rather than replace its
+            authentication, approvals or execution environment.
           </p>
-        </div>
 
-        <div class="install-grid">
-
-
-          <article class="install-step">
-            <div class="num">01 · INSTALL HOOK</div>
-            <h3>Add the project hook</h3>
-            <p>
-              Run the installer in your project root. It adds the integration files and keeps
-              generated state out of Git. Codex, Claude Code, and Antigravity get merged hook
-              settings; ohmypi loads its extension automatically. Antigravity also gets the
-              Harness Router MCP registration.
-            </p>
-            <fieldset class="hook-provider">
-              <legend>Choose your provider</legend>
-              <label><input type="radio" name="hook-provider" value="codex" checked /><span>Codex</span></label>
-              <label><input type="radio" name="hook-provider" value="claude" /><span>Claude Code</span></label>
-              <label><input type="radio" name="hook-provider" value="ohmypi" /><span>ohmypi</span></label>
-              <label><input type="radio" name="hook-provider" value="antigravity" /><span>Antigravity</span></label>
-              <label><input type="radio" name="hook-provider" value="deepseek" /><span>DeepSeek Harness</span></label>
-            </fieldset>
-            <div class="hook-command-toolbar">
-              <span id="hook-install-requirements">Project root · Python 3.11+</span>
-              <button class="copy" id="hook-install-copy" type="button" data-copy="" aria-label="Copy Codex hook installation command">copy</button>
-            </div>
-            <code class="mini-code" id="hook-install-command">curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
-  | python3 - --provider codex</code>
-            <p class="hook-install-note">
-              Keeps existing settings and other hooks. Backs up changed files. Safe to run again.
-              <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/scripts/install_hook.py">View installer ↗</a>
-              Use <code>--provider all</code> for all five, or <code>--provider both</code>
-              for Codex and Claude Code.
-            </p>
-          </article>
-
-          <article class="install-step">
-            <div class="num">02 · START</div>
-            <div aria-live="polite">
-              <div data-hook-provider-details="codex">
-                <h3>Start a fresh Codex session</h3>
-                <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
-                  exported, start Codex. The startup hook discovers its MCP tool inventory
-                  and builds the session catalog.
-                </p>
-                <code class="mini-code">.codex/hooks.json
-.codex/hooks/discover_tools.py
-.codex/hooks/pre_tool_use.py</code>
-              </div>
-              <div data-hook-provider-details="claude" hidden>
-                <h3>Start a fresh Claude Code session</h3>
-                <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
-                  exported, start Claude Code. The startup hook discovers native tools from
-                  <code>claude mcp serve</code> and configured MCP tools through the SDK control
-                  interface, then publishes the live registry for routing and session commands
-                  via <code>HARNESS_ROUTER_TOOL_REGISTRY</code>. Discovery makes no model call.
-                </p>
-                <code class="mini-code">.claude/settings.json
-.claude/hooks/discover_tools.py
-.claude/hooks/pre_tool_use.py</code>
-              </div>
-              <div data-hook-provider-details="ohmypi" hidden>
-                <h3>Start ohmypi in your project</h3>
-                <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
-                  exported, run <code>omp</code> from the project root. It automatically loads
-                  <code>.omp/extensions/harness-router.ts</code>; no hook configuration file
-                  is needed.
-                </p>
-                <code class="mini-code">.omp/extensions/harness-router.ts
-.omp/hooks/pre_tool_use.py
-.omp/tsconfig.json
-.omp/package.json
-.omp/bun.lock</code>
-                <p class="hook-install-note">
-                  To start with automatic extension discovery disabled, load Harness Router
-                  explicitly from the project root:
-                </p>
-                <code class="mini-code">omp --no-extensions --extension .omp/extensions/harness-router.ts</code>
-                <p class="hook-install-note">
-                  The installer uses Bun to install the pinned TypeScript dependencies and
-                  check the extension automatically. Bun must be on your <code>PATH</code>.
-                  To repeat the type check later, run:
-                </p>
-                <code class="mini-code">cd .omp
-bun run typecheck</code>
-                <p class="hook-install-note">
-                  The extension reads the real runtime catalog through <code>pi.getAllTools()</code>
-                  and <code>pi.getActiveTools()</code> before each <code>tool_call</code>, including
-                  active MCP and extension tools. No separate discovery process or model call.
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/.omp/README.md">ohmypi hook guide ↗</a>
-                </p>
-              </div>
-              <div data-hook-provider-details="deepseek" hidden>
-                <h3>Start DeepSeek Harness</h3>
-                <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
-                  exported, install the DeepSeek Harness hook. It uses DeepSeek's supported
-                  <code>tools/pre-execute</code> interception point through the
-                  <code>@deepseek-ai/dsh-hooks-codex</code> bridge.
-                </p>
-                <code class="mini-code">.dsh/harness-router-hooks.json
-.dsh/harness-router.patch.yml
-.dsh/hooks/hook.py</code>
-                <p class="hook-install-note">
-                  Start DeepSeek Harness with <code>dsh --patch .dsh/harness-router.patch.yml</code>.
-                  The hook fails open if routing or its explicit tool catalog is unavailable.
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/hooks/deepseek/README.md">DeepSeek hook guide ↗</a>
-                </p>
-              </div>
-              <div data-hook-provider-details="antigravity" hidden>
-                <h3>Start a fresh Antigravity session</h3>
-                <p>
-                  With <code>harness-router-mcp</code> installed and <code>OPENROUTER_API_KEY</code>
-                  in Antigravity's environment, restart the project session. The installer registers
-                  native <code>PreToolUse</code> and <code>Stop</code> hooks, plus an MCP server
-                  exposing both <code>route</code> and <code>route_mcts</code>.
-                </p>
-                <code class="mini-code">.agents/hooks.json
-.agents/mcp_config.json
-.antigravity/hooks/discover_tools.py
-.antigravity/hooks/pre_tool_use.py</code>
-                <p class="hook-install-note">
-                  Before each routing check, the hook reads the native and MCP tools exposed to
-                  this conversation from the running language server, including their exact names
-                  and schemas. Disabled or disconnected MCP tools are filtered out. A failed
-                  refresh lets the pending call continue without routing from an old catalog.
-                </p>
-                <p class="hook-install-note">
-                  Automatic routing starts with <code>route</code>; escalation to
-                  <code>route_mcts</code> requires a side-effect-free graph provider.
-                  Live discovery uses internal APIs inspected in Antigravity 2.11.0.
-                  See the guide for runtime connection overrides and simulator setup.
-                  <a href="https://github.com/Protocol-Lattice/harness-router/blob/main/.antigravity/README.md">Antigravity hook guide ↗</a>
-                </p>
-              </div>
-            </div>
-          </article>
-        </div>
-
-        <div class="hook-behavior">
-          <div>
-            <div class="section-id">Behavior</div>
-            <h3>Fail open. Keep approvals.</h3>
-          </div>
-          <p>
-            Each pending tool call uses fast <code>route</code> first. When that
-            decision is uncertain and a side-effect-free graph provider is configured, the hook
-            can escalate to <code>route_mcts</code>. Without a graph provider it never invents an
-            MCTS tree. Same choice, fallback, timeout, or router error lets the original call
-            continue. A different confident choice blocks only that call and asks your agent to
-            re-plan once. Sandbox and approval rules remain untouched.
-          </p>
-        </div>
-      </section>
-
-      <section class="install-section" id="install">
-        <div class="install-head">
-          <div>
-            <div class="section-id">$ 07 · Install</div>
-            <h2>Three steps. Then get out of the way.</h2>
-          </div>
-          <p>
-            Install the latest main branch, expose your OpenRouter key to the local MCP process,
-            and register the server in your agent. The Antigravity hook installer handles registration.
-          </p>
-        </div>
-
-        <div class="install-grid">
-          <article class="install-step">
-            <div class="num">01 · GLOBAL</div>
-            <h3>Install</h3>
-            <p>Keep it isolated and globally available through <code>uv tool</code>.</p>
-            <code class="mini-code">uv tool install --force \
-  --with 'mcp&gt;=2,&lt;3' \
+          <div class="install-grid">
+            <article class="install-card">
+              <div class="num">01 · INSTALL</div>
+              <h3>Install the router</h3>
+              <p>Install the current main branch as an isolated <code>uv</code> tool.</p>
+              <code class="mini-code">uv tool install --force \
+  --with 'mcp>=2,<3' \
   'git+https://github.com/Protocol-Lattice/harness-router.git@main'</code>
-          </article>
-
-          <article class="install-step">
-            <div class="num">02 · ENV</div>
-            <h3>Expose the key</h3>
-            <p>The server can load without it. Jev routing needs it when <code>route</code> is called.</p>
-            <code class="mini-code">export OPENROUTER_API_KEY="..."
-
-command -v harness-router-mcp</code>
-          </article>
-
-          <article class="install-step">
-            <div class="num">03 · CODEX</div>
-            <h3>Register MCP</h3>
-            <p>Add the stdio server, restart Codex, then verify both tools with <code>/mcp</code>.</p>
-            <code class="mini-code">codex mcp add harness-router -- \
-  harness-router-mcp
-
-codex mcp list</code>
-          </article>
+            </article>
+            <article class="install-card">
+              <div class="num">02 · HOOK</div>
+              <h3>Install a provider hook</h3>
+              <p>Run the project installer and choose the harness you want to integrate.</p>
+              <code class="mini-code">curl -fsSL https://raw.githubusercontent.com/Protocol-Lattice/harness-router/main/scripts/install_hook.py \
+  | python3 - --provider codex</code>
+            </article>
+            <article class="install-card">
+              <div class="num">03 · RUN</div>
+              <h3>Start a fresh session</h3>
+              <p>The hook discovers the runtime tool context and enters the decision lifecycle.</p>
+              <code class="mini-code">pre_decision
+    ↓
+route / route_mcts
+    ↓
+tool
+    ↓
+post_tool_use</code>
+            </article>
+          </div>
         </div>
       </section>
 
       <section class="cta">
-        <div class="section-id">$ 08 · The rule</div>
-        <h2>One router. Two ways in.<br><em>Skill or hook.</em></h2>
+        <div class="eyebrow">$ harness-router</div>
+        <h2>Control the <em>next step.</em></h2>
         <p>
-          Use the skill when you want explicit control. Use the hook when you want every tool call checked automatically.
-          Harness Router keeps simple decisions fast and brings in <code>route_mcts</code> only when the choice needs deeper search.
+          Cache obvious decisions. Route uncertain choices. Observe execution.
+          Feed the outcome into the next decision without taking ownership away from the harness.
         </p>
-        <div class="cta-actions">
+        <div class="actions">
           <a class="btn primary" href="https://github.com/Protocol-Lattice/harness-router" target="_blank" rel="noreferrer">View on GitHub</a>
           <a class="btn" href="https://github.com/Protocol-Lattice/harness-router/blob/main/README.md" target="_blank" rel="noreferrer">Read docs</a>
-          <a class="btn" href="#install">Install MCP</a>
+          <a class="btn" href="#install">Install</a>
         </div>
       </section>
-    
-
-
-</main>
+    </main>
 
     <footer>
       <span>Protocol Lattice · harness-router · MIT</span>
-      <span>Fast path first. Benchmark everything.</span>
+      <span>Decide. Execute. Observe. Decide again.</span>
     </footer>
   </div>
-
-  <script>
-    const repo = "Protocol-Lattice/harness-router";
-
-    fetch("https://api.github.com/repos/" + repo)
-      .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((data) => {
-        const stars = document.getElementById("stars");
-        if (stars && Number.isFinite(data.stargazers_count)) {
-          stars.textContent = " · " + data.stargazers_count + "★";
-        }
-      })
-      .catch(() => {});
-
-    document.querySelectorAll("[data-bench-metric]").forEach(button => {
-      button.addEventListener("click", () => {
-        const metric = button.dataset.benchMetric;
-        document.querySelectorAll("[data-bench-metric]").forEach(control => {
-          control.setAttribute("aria-pressed", String(control === button));
-        });
-        document.querySelectorAll("[data-bench-view]").forEach(view => {
-          view.hidden = view.dataset.benchView !== metric;
-        });
-      });
-    });
-
-    async function copyText(text, button) {
-      try {
-        await navigator.clipboard.writeText(text);
-        const original = button.textContent;
-        button.textContent = "copied ✓";
-        window.setTimeout(() => { button.textContent = original; }, 1300);
-      } catch {
-        window.prompt("Copy command:", text);
-      }
-    }
-
-    const hookProviders = document.querySelectorAll('input[name="hook-provider"]');
-    function updateHookInstaller() {
-      const provider = document.querySelector('input[name="hook-provider"]:checked').value;
-      const name = { codex: "Codex", claude: "Claude Code", ohmypi: "ohmypi", antigravity: "Antigravity", deepseek: "DeepSeek Harness" }[provider];
-      document.getElementById("hook-install-requirements").textContent =
-        "Project root · Python 3.11+" + (provider === "ohmypi" ? " · Bun" : "");
-      const code = document.getElementById("hook-install-command");
-      code.textContent = code.textContent.replace(/--provider (codex|claude|ohmypi|antigravity|deepseek)/, "--provider " + provider);
-      const button = document.getElementById("hook-install-copy");
-      button.dataset.copy = code.textContent;
-      button.setAttribute("aria-label", "Copy " + name + " hook installation command");
-      document.querySelectorAll("[data-hook-provider-details]").forEach((details) => {
-        details.hidden = details.dataset.hookProviderDetails !== provider;
-      });
-    }
-    hookProviders.forEach((input) => input.addEventListener("change", updateHookInstaller));
-    updateHookInstaller();
-
-    document.querySelectorAll("[data-copy]").forEach((button) => {
-      button.addEventListener("click", () => copyText(button.dataset.copy, button));
-    });
-  </script>
 </body>
 </html>
