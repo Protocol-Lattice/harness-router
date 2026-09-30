@@ -99,27 +99,51 @@ that the selected alternative is still active.
 
 ## Routing behavior
 
-The hook supplies the latest user goal and a compact pending tool input to the
-router. Those are sent to your configured routing provider. It includes the
-pending tool plus up to seven similar alternatives, then calls the MCP `route`
-tool. A different shortlisted tool at confidence 0.80 or higher produces an
-ohmypi `{ block: true, reason }` result asking the planner to re-plan.
+The extension now uses Harness Router as the **next-tool decision layer** inside
+ohmypi rather than only reviewing a model-selected call.
 
-One redirect is allowed per user turn, including simultaneous pending calls. A
-custom session entry records the redirect so it can be restored on resume or
-branch navigation. New user work resets the in-memory guard; model/tool turns do
-not. Results from a previous prompt or session are ignored.
+```text
+before_agent_start
+       |
+       v
+ Harness Router
+       |
+       v
+ selected tool
+       |
+       v
+setActiveTools([selected])
+       |
+       v
+next provider request
+       |
+       v
+tool execution
+       |
+       v
+tool_result
+       |
+       +----> Router -> next state
+```
 
-The extension abstains when the router keeps the original choice, falls back,
-returns malformed or low-confidence data, times out, or is unavailable. Unknown
-tools and missing runtime APIs also pass through. All errors are contained because
-ohmypi normally blocks a tool when a `tool_call` handler throws. The extension
-does not replace tool arguments, execute an alternative, or grant permissions.
+For a high-confidence route, the extension temporarily restricts ohmypi's active
+tool surface to the selected tool. This uses the native setActiveTools() runtime
+action exposed by the extension API. After the tool result, the router evaluates
+the new state and installs the next selected tool before the following provider
+request. On fallback, low confidence, timeout, malformed output, or an unavailable
+tool, the original active tool set is restored and normal ohmypi behavior continues.
 
-Interception covers AgentTool calls exposed through `tool_call`. Host bridge
-operations inside eval (for example direct browser/computer helpers) do not emit
-that event and cannot be intercepted by this extension.
+The original active tool set is preserved across the temporary restriction. This
+matters because the active set may contain user-disabled tools, deferred tools,
+or tools supplied by extensions and MCP servers.
 
+The tool_call hook remains as a defensive check: if the runtime asks to execute a
+different AgentTool despite the active-tool restriction, the call is blocked rather
+than executed. The extension does not bypass approvals or permissions.
+
+Router tools are excluded from the controlled set so the model cannot recurse into
+the router while the extension is making the decision. Direct host bridge calls
+inside eval remain outside the AgentTool hook contract.
 ## Configuration
 
 | Variable | Default | Purpose |
